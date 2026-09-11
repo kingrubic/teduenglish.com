@@ -1,0 +1,1 @@
+import Link from "next/link"; export default function NoAccess(){return <div className="auth-shell"><div className="auth-card"><h1>Không có quyền truy cập</h1><p>Tài khoản hiện tại không được phép xem khu vực này.</p><Link className="button" href="/">Về trang chủ</Link></div></div>}

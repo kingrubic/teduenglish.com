@@ -1,0 +1,2 @@
+import type { MetadataRoute } from "next";import { data } from "@/lib/data";
+export default async function sitemap():Promise<MetadataRoute.Sitemap>{const base=process.env.APP_URL||"http://localhost:4173";const fixed=["","/gioi-thieu","/chuong-trinh","/thoi-khoa-bieu","/dang-ky-tu-van"].map(url=>({url:`${base}${url}`,lastModified:new Date()}));try{const programs=await data.publishedPrograms();return [...fixed,...programs.rows.map(p=>({url:`${base}/chuong-trinh/${p.slug}`,lastModified:new Date()}))]}catch{return fixed}}

@@ -1,0 +1,2 @@
+import { AppShell } from "@/components/AppShell"; import { requireMenuAccess } from "@/lib/permissions"; import { data } from "@/lib/data";
+export default async function MyClasses(){const a=await requireMenuAccess("portal.classes");const x=await data.myClasses();return <AppShell actor={a}><div className="content-head"><h1>Lớp học của em</h1></div><div className="grid-3">{x.rows.map(c=><div className="card" key={c.id}><span className="tag">{c.level}</span><h3>{c.name}</h3><p>{c.program} · {c.modality}</p></div>)}</div></AppShell>}

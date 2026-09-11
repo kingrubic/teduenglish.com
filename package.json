@@ -1,0 +1,40 @@
+{
+  "name": "teduenglish",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 4173",
+    "dev:all": "npx concurrently -k \"npm run convex:dev\" \"npm run dev\"",
+    "build": "next build",
+    "start": "next start --port 4173",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "convex:dev": "convex dev",
+    "convex:once": "convex dev --once",
+    "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
+    "db:bootstrap": "tsx --env-file=.env.local scripts/bootstrap-production.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "convex": "^1.45.0",
+    "mammoth": "^1.12.2",
+    "next": "^16.3.4",
+    "pdf-parse": "^2.4.5",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zod": "^4.1.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.1",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "concurrently": "^9.2.1",
+    "eslint": "^9.35.0",
+    "eslint-config-next": "^16.3.4",
+    "postcss": "^8.5.28",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

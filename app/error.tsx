@@ -1,0 +1,2 @@
+"use client";import { useEffect } from "react";
+export default function ErrorPage({error,reset}:{error:Error&{digest?:string};reset:()=>void}){useEffect(()=>{console.error(error)},[error]);return <main className="auth-shell"><section className="auth-card"><div className="eyebrow">Chưa thể hoàn tất</div><h1>Có lỗi xảy ra</h1><p className="muted">Dữ liệu chưa bị thay đổi dở dang. Vui lòng kiểm tra thông tin và thử lại; nếu lỗi tiếp diễn, liên hệ quản trị viên.</p><button className="button" onClick={reset}>Thử lại</button></section></main>}

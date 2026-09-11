@@ -1,0 +1,4 @@
+type,prompt,options,correctAnswer,explanation,points,tags
+SINGLE_CHOICE,"I ___ breakfast at 7 a.m. every day.","have|has|having",have,"Với chủ ngữ I ở hiện tại đơn, động từ giữ nguyên mẫu.",1,"grammar|present-simple"
+TRUE_FALSE,"She goes to school is grammatically correct.","True|False",True,"Chủ ngữ ngôi thứ ba số ít dùng động từ thêm -es.",1,"grammar|grade-6"
+SHORT_ANSWER,"Write one sentence about your morning routine.",,,,3,"writing|routine"

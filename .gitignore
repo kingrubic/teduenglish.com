@@ -1,0 +1,9 @@
+.next/
+node_modules/
+.env.local
+.convex/
+coverage/
+data/uploads/
+AGENTS.md
+CLAUDE.md
+tsconfig.tsbuildinfo
