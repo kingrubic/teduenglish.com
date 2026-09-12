@@ -19,6 +19,7 @@ export default defineSchema({
       v.literal("SUSPENDED"),
     ),
     departmentId: v.optional(v.id("departments")),
+    mustChangePassword: v.optional(v.boolean()),
     createdAt: v.number(),
     deletedAt: v.optional(v.number()),
   })

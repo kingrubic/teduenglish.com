@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { api, convex } from "./convex";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -10,6 +10,7 @@ export type Actor = {
   email: string;
   name: string;
   role: "ADMIN" | "MOD" | "USER";
+  mustChangePassword?: boolean;
 };
 
 export const COOKIE = "elh_session";
@@ -37,10 +38,11 @@ export async function createSession(userId: string) {
     userId: userId as Id<"users">,
     tokenHash: hashToken(token),
   });
+  const proto = (await headers()).get("x-forwarded-proto")?.split(",")[0]?.trim();
   (await cookies()).set(COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: proto === "https" || process.env.NODE_ENV === "production",
     path: "/",
     maxAge: 604800,
   });
@@ -62,9 +64,14 @@ export async function getActor(): Promise<Actor | null> {
   return convex().query(api.auth.getActor, { tokenHash });
 }
 
-export async function requireActor(roles?: Actor["role"][]) {
+export async function requireActor(
+  roles?: Actor["role"][],
+  opts?: { allowMustChangePassword?: boolean },
+) {
   const actor = await getActor();
   if (!actor) redirect("/dang-nhap");
+  if (actor.mustChangePassword && !opts?.allowMustChangePassword)
+    redirect("/tai-khoan");
   if (roles && !roles.includes(actor.role)) redirect("/khong-co-quyen");
   return actor;
 }

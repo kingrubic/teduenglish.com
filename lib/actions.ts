@@ -15,6 +15,11 @@ import {
 import { api, convex } from "@/lib/convex";
 import { dueAtMs, idSchema } from "@/lib/ids";
 import { requireMenuAccess } from "@/lib/permissions";
+import {
+  isReusableTempPassword,
+  MIN_NEW_PASSWORD,
+  passwordMeetsPolicy,
+} from "@/lib/password";
 import type { Id } from "@/convex/_generated/dataModel";
 
 const digest = (value: string) =>
@@ -47,6 +52,7 @@ export async function login(formData: FormData) {
   });
   if (!user || !valid) redirect("/dang-nhap?error=invalid");
   await createSession(user.id);
+  if (user.mustChangePassword) redirect("/tai-khoan");
   if (user.role !== "USER") redirect("/cms");
   const landing = await convex().query(api.auth.landingMenu, { userId: user.id });
   redirect(landing?.startsWith("cms.") ? "/cms" : "/hoc-tap");
@@ -649,27 +655,47 @@ export async function createPermissionGroup(formData: FormData) {
 export async function createUser(formData: FormData) {
   const tokenHash = await requireSessionHash();
   const groupIds = formData.getAll("groupIds").map(String);
-  const data = z
+  const parsed = z
     .object({
       name: z.string().min(2).max(100),
       email: z.string().email(),
-      password: z.string().min(8).max(100),
+      password: z.string().min(MIN_NEW_PASSWORD).max(100),
       role: z.enum(["ADMIN", "MOD", "USER"]),
       departmentId: z.string().optional().or(z.literal("")),
     })
-    .parse(Object.fromEntries(formData));
-  await convex().mutation(api.mutations.createUser, {
-    tokenHash,
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success)
+    return {
+      error:
+        "Kiểm tra lại họ tên, email và mật khẩu tạm (tối thiểu 10 ký tự).",
+    };
+  const data = parsed.data;
+  try {
+    await convex().mutation(api.mutations.createUser, {
+      tokenHash,
+      name: data.name,
+      email: data.email,
+      passwordHash: await bcrypt.hash(data.password, 12),
+      role: data.role,
+      departmentId: data.departmentId
+        ? (data.departmentId as Id<"departments">)
+        : undefined,
+      groupIds: groupIds as Id<"permissionGroups">[],
+    });
+  } catch (cause) {
+    return {
+      error:
+        cause instanceof Error
+          ? cause.message
+          : "Không tạo được tài khoản. Thử lại.",
+    };
+  }
+  revalidatePath("/cms/nguoi-dung");
+  return {
     name: data.name,
     email: data.email,
-    passwordHash: await bcrypt.hash(data.password, 12),
-    role: data.role,
-    departmentId: data.departmentId
-      ? (data.departmentId as Id<"departments">)
-      : undefined,
-    groupIds: groupIds as Id<"permissionGroups">[],
-  });
-  revalidatePath("/cms/nguoi-dung");
+    tempPassword: data.password,
+  };
 }
 
 export async function updateUserStatus(formData: FormData) {
@@ -690,33 +716,58 @@ export async function updateUserStatus(formData: FormData) {
 
 export async function adminResetPassword(formData: FormData) {
   const tokenHash = await requireSessionHash();
-  const data = z
-    .object({ userId: idSchema, password: z.string().min(8).max(100) })
-    .parse(Object.fromEntries(formData));
-  await convex().mutation(api.mutations.adminResetPassword, {
-    tokenHash,
-    userId: data.userId as Id<"users">,
-    passwordHash: await bcrypt.hash(data.password, 12),
-  });
-  revalidatePath("/cms/nguoi-dung");
+  const parsed = z
+    .object({
+      userId: idSchema,
+      password: z.string().min(MIN_NEW_PASSWORD).max(100),
+    })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success)
+    return { error: "Mật khẩu tạm phải có tối thiểu 10 ký tự." };
+  const data = parsed.data;
+  try {
+    const user = await convex().mutation(api.mutations.adminResetPassword, {
+      tokenHash,
+      userId: data.userId as Id<"users">,
+      passwordHash: await bcrypt.hash(data.password, 12),
+    });
+    revalidatePath("/cms/nguoi-dung");
+    return {
+      name: user.name,
+      email: user.email,
+      tempPassword: data.password,
+    };
+  } catch (cause) {
+    return {
+      error:
+        cause instanceof Error
+          ? cause.message
+          : "Không đặt lại được mật khẩu. Thử lại.",
+    };
+  }
 }
 
 export async function changePassword(formData: FormData) {
   const tokenHash = await requireSessionHash();
-  const actor = await requireActor();
+  await requireActor(undefined, { allowMustChangePassword: true });
   const data = z
     .object({
-      currentPassword: z.string().min(8),
-      newPassword: z.string().min(8).max(100),
+      currentPassword: z.string().min(8).max(100),
+      newPassword: z.string().min(1).max(100),
     })
-    .parse(Object.fromEntries(formData));
+    .safeParse(Object.fromEntries(formData));
+  if (!data.success || !passwordMeetsPolicy(data.data.newPassword))
+    redirect("/tai-khoan?error=short");
+  if (isReusableTempPassword(data.data.newPassword, data.data.currentPassword))
+    redirect("/tai-khoan?error=same");
   const hash = await convex().query(api.cms.passwordHash, { tokenHash });
-  if (!hash || !(await bcrypt.compare(data.currentPassword, hash)))
-    throw new Error("Mật khẩu hiện tại không đúng");
+  if (!hash || !(await bcrypt.compare(data.data.currentPassword, hash)))
+    redirect("/tai-khoan?error=current");
   await convex().mutation(api.mutations.changePassword, {
     tokenHash,
-    passwordHash: await bcrypt.hash(data.newPassword, 12),
+    passwordHash: await bcrypt.hash(data.data.newPassword, 12),
   });
+  await destroySession();
   redirect("/dang-nhap?changed=1");
 }
 

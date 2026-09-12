@@ -577,6 +577,7 @@ export const createUser = mutation({
       role: args.role,
       status: "ACTIVE",
       departmentId: args.departmentId,
+      mustChangePassword: true,
       createdAt: Date.now(),
     });
     if (args.role === "USER") {
@@ -635,21 +636,30 @@ export const adminResetPassword = mutation({
     const user = await ctx.db.get(args.userId);
     if (!user || user.tenantId !== actor.tenantId || user.deletedAt)
       throw new Error("Không tìm thấy tài khoản");
-    await ctx.db.patch(user._id, { passwordHash: args.passwordHash });
+    await ctx.db.patch(user._id, {
+      passwordHash: args.passwordHash,
+      mustChangePassword: true,
+    });
     const sessions = await ctx.db
       .query("sessions")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
     for (const session of sessions) await ctx.db.delete(session._id);
     await audit(ctx, actor, "RESET_PASSWORD", "USER", user._id);
+    return { name: user.name, email: user.email };
   },
 });
 
 export const changePassword = mutation({
   args: { tokenHash: v.string(), passwordHash: v.string() },
   handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args.tokenHash);
-    await ctx.db.patch(actor.id, { passwordHash: args.passwordHash });
+    const actor = await requireActor(ctx, args.tokenHash, undefined, {
+      allowMustChangePassword: true,
+    });
+    await ctx.db.patch(actor.id, {
+      passwordHash: args.passwordHash,
+      mustChangePassword: false,
+    });
     const sessions = await ctx.db
       .query("sessions")
       .withIndex("by_user", (q) => q.eq("userId", actor.id))

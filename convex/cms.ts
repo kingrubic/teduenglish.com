@@ -371,6 +371,7 @@ export const usersPage = query({
         status: user.status,
         department: dept?.name ?? null,
         groups: names.length ? names.join(", ") : null,
+        mustChangePassword: Boolean(user.mustChangePassword),
       });
     }
     const departments = (
@@ -608,7 +609,9 @@ export const resourceDownload = query({
 export const passwordHash = query({
   args: { tokenHash: v.string(), userId: v.optional(v.id("users")) },
   handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args.tokenHash);
+    const actor = await requireActor(ctx, args.tokenHash, undefined, {
+      allowMustChangePassword: true,
+    });
     const id = (args.userId ?? actor.id) as Id<"users">;
     if (args.userId && actor.role !== "ADMIN" && args.userId !== actor.id)
       throw new Error("Forbidden");

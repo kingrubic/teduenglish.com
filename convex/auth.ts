@@ -27,6 +27,7 @@ export const userByEmail = query({
       id: user._id,
       passwordHash: user.passwordHash,
       role: user.role,
+      mustChangePassword: Boolean(user.mustChangePassword),
     };
   },
 });

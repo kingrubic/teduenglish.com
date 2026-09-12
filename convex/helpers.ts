@@ -7,6 +7,7 @@ export type Actor = {
   email: string;
   name: string;
   role: "ADMIN" | "MOD" | "USER";
+  mustChangePassword: boolean;
 };
 
 export function iso(value?: number | null) {
@@ -38,6 +39,7 @@ export async function actorFromHash(
     email: user.email,
     name: user.name,
     role: user.role,
+    mustChangePassword: Boolean(user.mustChangePassword),
   };
 }
 
@@ -45,9 +47,12 @@ export async function requireActor(
   ctx: QueryCtx | MutationCtx,
   tokenHash: string,
   roles?: Actor["role"][],
+  opts?: { allowMustChangePassword?: boolean },
 ) {
   const actor = await actorFromHash(ctx, tokenHash);
   if (!actor) throw new Error("Unauthorized");
+  if (actor.mustChangePassword && !opts?.allowMustChangePassword)
+    throw new Error("Phải đổi mật khẩu trước khi tiếp tục");
   if (roles && !roles.includes(actor.role)) throw new Error("Forbidden");
   return actor;
 }
