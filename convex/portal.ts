@@ -5,7 +5,7 @@ import { iso, requireActor } from "./helpers";
 export const dashboard = query({
   args: { tokenHash: v.string() },
   handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args.tokenHash, ["USER"]);
+    const actor = await requireActor(ctx, args.tokenHash);
     const enrollments = (
       await ctx.db
         .query("enrollments")
@@ -53,7 +53,7 @@ export const dashboard = query({
 export const myClasses = query({
   args: { tokenHash: v.string() },
   handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args.tokenHash, ["USER"]);
+    const actor = await requireActor(ctx, args.tokenHash);
     const enrollments = (
       await ctx.db
         .query("enrollments")
@@ -80,7 +80,7 @@ export const myClasses = query({
 export const myAssignments = query({
   args: { tokenHash: v.string() },
   handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args.tokenHash, ["USER"]);
+    const actor = await requireActor(ctx, args.tokenHash);
     const enrollments = (
       await ctx.db
         .query("enrollments")
@@ -122,7 +122,7 @@ export const myAssignments = query({
 export const myResources = query({
   args: { tokenHash: v.string() },
   handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args.tokenHash, ["USER"]);
+    const actor = await requireActor(ctx, args.tokenHash);
     const enrollments = (
       await ctx.db
         .query("enrollments")
@@ -157,7 +157,7 @@ export const myResources = query({
 export const attemptPage = query({
   args: { tokenHash: v.string(), attemptId: v.id("attempts") },
   handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args.tokenHash, ["USER"]);
+    const actor = await requireActor(ctx, args.tokenHash);
     const attempt = await ctx.db.get(args.attemptId);
     if (!attempt || attempt.studentId !== actor.id) return null;
     const assignment = await ctx.db.get(attempt.assignmentId);
@@ -188,7 +188,7 @@ export const attemptPage = query({
 export const resultPage = query({
   args: { tokenHash: v.string(), attemptId: v.id("attempts") },
   handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args.tokenHash, ["USER"]);
+    const actor = await requireActor(ctx, args.tokenHash);
     const attempt = await ctx.db.get(args.attemptId);
     if (
       !attempt ||
@@ -332,7 +332,7 @@ export const checkAnswer = query({
     questionId: v.id("questions"),
   },
   handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args.tokenHash, ["USER"]);
+    const actor = await requireActor(ctx, args.tokenHash);
     const attempt = await ctx.db.get(args.attemptId);
     if (!attempt || attempt.studentId !== actor.id || attempt.status !== "IN_PROGRESS")
       return null;

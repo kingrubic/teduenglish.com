@@ -1,1 +1,0 @@
-export default function Loading(){return <main className="auth-shell"><section className="auth-card"><div className="eyebrow">TEDUENGLISH</div><h2>Đang tải dữ liệu…</h2><p className="muted">Vui lòng chờ trong giây lát.</p></section></main>}
