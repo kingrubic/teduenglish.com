@@ -73,6 +73,30 @@ export function slugify(s: unknown): string {
     .slice(0, 60);
 }
 
+/** One student per line: "Name", "Name, Class", or tab/semicolon separated (pasted from Excel). */
+export function parseStudentLines(text: string, defaultClass = ""): { name: string; className: string }[] {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => {
+      const [n, c] = l.split(/\t|,|;/).map((x) => x.trim());
+      return { name: n ?? "", className: c || defaultClass.trim() };
+    });
+}
+
+/** Listening script: each line "Speaker: words"; lines without a speaker are narration. */
+export function parseDialogue(text: string): { speaker: string | null; text: string }[] {
+  return text
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const m = line.match(/^([A-Za-z][\w .'-]{0,24}):\s+(.+)$/);
+      return m ? { speaker: m[1], text: m[2] } : { speaker: null, text: line };
+    });
+}
+
 export function questionCount(sections: { questions: unknown[] }[]): number {
   return sections.reduce((n, s) => n + s.questions.length, 0);
 }

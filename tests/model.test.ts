@@ -63,3 +63,23 @@ describe("parseLoose", () => {
     expect(parseLoose(`{ url: "https://example.com/a" }`)).toEqual({ url: "https://example.com/a" });
   });
 });
+
+describe("shared parsers", () => {
+  it("reads pasted class lists", async () => {
+    const { parseStudentLines } = await import("@/convex/model");
+    expect(parseStudentLines("Nguyễn Văn Bình, 8A2\n\nLê Hoàng Nam\nTrần Mai\t9A1", "7B")).toEqual([
+      { name: "Nguyễn Văn Bình", className: "8A2" },
+      { name: "Lê Hoàng Nam", className: "7B" },
+      { name: "Trần Mai", className: "9A1" },
+    ]);
+  });
+
+  it("splits a listening script into speakers", async () => {
+    const { parseDialogue } = await import("@/convex/model");
+    expect(parseDialogue("Receptionist: Good morning.\nThe phone rings.\nCaller: Hi, it's Daniel.")).toEqual([
+      { speaker: "Receptionist", text: "Good morning." },
+      { speaker: null, text: "The phone rings." },
+      { speaker: "Caller", text: "Hi, it's Daniel." },
+    ]);
+  });
+});

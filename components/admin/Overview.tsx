@@ -97,9 +97,14 @@ export default function Overview() {
             </section>
 
             <section className="panel">
-              <div>
-                <p className="eyebrow">Hướng dẫn nhanh</p>
-                <h2>Giao bài cho lớp</h2>
+              <div className="toolbar">
+                <div>
+                  <p className="eyebrow">Hướng dẫn nhanh</p>
+                  <h2>Giao bài cho lớp</h2>
+                </div>
+                <Link className="btn btn-primary btn-sm" href="/admin/huong-dan">
+                  📖 Xem hướng dẫn đầy đủ
+                </Link>
               </div>
               <ol className="steps">
                 <li>

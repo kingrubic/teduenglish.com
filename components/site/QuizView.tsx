@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Answers } from "@/convex/model";
-import { normAnswer } from "@/convex/model";
+import { normAnswer, parseDialogue } from "@/convex/model";
 import { Rich, copyText, errMsg, sdel, sget, shuffle, signalReady, sset, stamp } from "@/lib/ui";
 import { GateLogin, GateNoAccess, Loading, Missing, Swoosh } from "./parts";
 import { useSite } from "./SiteShell";
@@ -222,14 +222,13 @@ function QuizRunner({ meta, sections: liveSections }: { meta: Meta; sections: Pu
     const pool = gb.length >= 2 ? gb : voices;
     const speakers: Record<string, number> = {};
     let count = 0;
-    const lines = sec.listen.split("\n").map((s) => s.trim()).filter(Boolean);
+    const lines = parseDialogue(sec.listen);
     const tok = ++ttsToken.current;
 
     lines.forEach((line, i) => {
-      const mm = line.match(/^([A-Za-z][\w .'-]{0,24}):\s+(.+)$/);
-      const who = mm ? mm[1] : "_";
+      const who = line.speaker ?? "_";
       if (!(who in speakers)) speakers[who] = count++;
-      const u = new window.SpeechSynthesisUtterance(mm ? mm[2] : line);
+      const u = new window.SpeechSynthesisUtterance(line.text);
       u.lang = "en-GB";
       u.rate = r;
       if (pool.length) u.voice = pool[speakers[who] % pool.length];

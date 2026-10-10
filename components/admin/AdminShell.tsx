@@ -29,6 +29,7 @@ const NAV = [
   ["/admin/tai-lieu", "Tài liệu & liên kết"],
   ["/admin/ket-qua", "Kết quả"],
   ["/admin/cai-dat", "Cài đặt & tài khoản"],
+  ["/admin/huong-dan", "📖 Hướng dẫn"],
 ] as const;
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { noMarks } from "@/convex/model";
+import { noMarks, parseStudentLines } from "@/convex/model";
 import { copyText, errMsg, stamp } from "@/lib/ui";
 import { downloadCsv } from "./csv";
 import { Modal, useAdmin, useRun } from "./AdminShell";
@@ -382,14 +382,7 @@ function BulkForm({ folders, classes, onClose }: { folders: Folder[]; classes: s
   const [busy, setBusy] = useState(false);
   const [created, setCreated] = useState<{ name: string; className: string; code: string }[] | null>(null);
 
-  const rows = text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => {
-      const [n, c] = l.split(/\t|,|;/).map((x) => x.trim());
-      return { name: n ?? "", className: c || className.trim() };
-    });
+  const rows = parseStudentLines(text, className);
   const missingClass = rows.filter((r) => !r.className).length;
 
   async function onSubmit(e: React.FormEvent) {
