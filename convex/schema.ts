@@ -1,380 +1,157 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+export const questionValidator = v.union(
+  v.object({
+    type: v.literal("mcq"),
+    tag: v.optional(v.string()),
+    q: v.string(),
+    options: v.array(v.string()),
+    answer: v.number(),
+    explain: v.optional(v.string()),
+  }),
+  v.object({
+    type: v.literal("fill"),
+    tag: v.optional(v.string()),
+    q: v.string(),
+    answer: v.array(v.string()),
+    explain: v.optional(v.string()),
+  }),
+);
+
+export const sectionValidator = v.object({
+  title: v.string(),
+  listen: v.optional(v.string()),
+  passage: v.optional(v.string()),
+  questions: v.array(questionValidator),
+});
+
+export const ieltsValidator = v.optional(
+  v.union(v.literal("listening"), v.literal("reading")),
+);
+
+export const resourceKindValidator = v.union(
+  v.literal("exercise"),
+  v.literal("game"),
+  v.literal("video"),
+  v.literal("doc"),
+);
+
 export default defineSchema({
-  tenants: defineTable({
-    name: v.string(),
-    createdAt: v.number(),
+  // Single row: center name, contact, demo hint...
+  settings: defineTable({
+    centerName: v.string(),
+    tagline: v.string(),
+    teacher: v.string(),
+    contact: v.string(),
+    showDemoHint: v.boolean(),
+    demoCode: v.string(),
+    updatedAt: v.number(),
   }),
 
-  users: defineTable({
-    tenantId: v.id("tenants"),
-    email: v.string(),
-    passwordHash: v.string(),
+  folders: defineTable({
+    slug: v.string(),
+    badge: v.string(),
     name: v.string(),
-    role: v.union(v.literal("ADMIN"), v.literal("MOD"), v.literal("USER")),
-    status: v.union(
-      v.literal("ACTIVE"),
-      v.literal("INACTIVE"),
-      v.literal("SUSPENDED"),
-    ),
-    departmentId: v.optional(v.id("departments")),
-    mustChangePassword: v.optional(v.boolean()),
-    createdAt: v.number(),
-    deletedAt: v.optional(v.number()),
-  })
-    .index("by_email", ["email"])
-    .index("by_tenant", ["tenantId"])
-    .index("by_tenant_role", ["tenantId", "role"])
-    .index("by_department", ["departmentId"]),
+    detail: v.string(),
+    order: v.number(),
+  }).index("by_slug", ["slug"]),
 
-  sessions: defineTable({
-    userId: v.id("users"),
+  students: defineTable({
+    code: v.string(), // normalized (lowercase, no spaces)
+    name: v.string(),
+    className: v.string(),
+    folders: v.array(v.string()), // folder slugs, or ["*"] for all
+    active: v.boolean(),
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+    lastSeenAt: v.optional(v.number()),
+  })
+    .index("by_code", ["code"])
+    .index("by_class", ["className"]),
+
+  studentSessions: defineTable({
+    studentId: v.id("students"),
     tokenHash: v.string(),
     expiresAt: v.number(),
-    createdAt: v.number(),
   })
     .index("by_tokenHash", ["tokenHash"])
-    .index("by_user", ["userId"]),
-
-  loginAttempts: defineTable({
-    emailHash: v.string(),
-    ipHash: v.string(),
-    succeeded: v.boolean(),
-    attemptedAt: v.number(),
-  }).index("by_email_ip", ["emailHash", "ipHash"]),
-
-  programs: defineTable({
-    tenantId: v.id("tenants"),
-    slug: v.string(),
-    title: v.string(),
-    summary: v.string(),
-    audience: v.string(),
-    outcomes: v.string(),
-    isPublished: v.boolean(),
-  })
-    .index("by_tenant", ["tenantId"])
-    .index("by_slug", ["slug"])
-    .index("by_published", ["isPublished"]),
-
-  classes: defineTable({
-    tenantId: v.id("tenants"),
-    programId: v.optional(v.id("programs")),
-    teacherId: v.id("users"),
-    name: v.string(),
-    code: v.string(),
-    gradeMin: v.number(),
-    gradeMax: v.number(),
-    level: v.string(),
-    modality: v.string(),
-    location: v.optional(v.string()),
-    startsOn: v.string(),
-    endsOn: v.optional(v.string()),
-    recruiting: v.boolean(),
-    recruitmentStatus: v.union(
-      v.literal("RECRUITING"),
-      v.literal("UPCOMING"),
-      v.literal("FULL"),
-      v.literal("CLOSED"),
-    ),
-    capacity: v.optional(v.number()),
-    publicRemainingSeats: v.boolean(),
-    description: v.string(),
-    publicOnlineInfo: v.optional(v.string()),
-    isDemo: v.boolean(),
-    createdAt: v.number(),
-  })
-    .index("by_tenant", ["tenantId"])
-    .index("by_tenant_code", ["tenantId", "code"])
-    .index("by_teacher", ["teacherId"])
-    .index("by_program", ["programId"])
-    .index("by_status", ["recruitmentStatus"]),
-
-  enrollments: defineTable({
-    classId: v.id("classes"),
-    studentId: v.id("users"),
-    status: v.string(),
-    enrolledAt: v.number(),
-  })
-    .index("by_class", ["classId"])
     .index("by_student", ["studentId"])
-    .index("by_class_student", ["classId", "studentId"]),
-
-  classSchedules: defineTable({
-    classId: v.id("classes"),
-    weekday: v.number(),
-    startsAt: v.string(),
-    endsAt: v.string(),
-    timezone: v.string(),
-    effectiveFrom: v.optional(v.string()),
-    effectiveTo: v.optional(v.string()),
-    locationOverride: v.optional(v.string()),
-  }).index("by_class", ["classId"]),
-
-  scheduleExceptions: defineTable({
-    classId: v.id("classes"),
-    scheduleId: v.optional(v.id("classSchedules")),
-    exceptionDate: v.string(),
-    type: v.union(
-      v.literal("CANCELLED"),
-      v.literal("MAKEUP"),
-      v.literal("TIME_CHANGE"),
-      v.literal("LOCATION_CHANGE"),
-    ),
-    startsAt: v.optional(v.string()),
-    endsAt: v.optional(v.string()),
-    location: v.optional(v.string()),
-    note: v.string(),
-    createdAt: v.number(),
-  }).index("by_class", ["classId"]),
+    .index("by_expiresAt", ["expiresAt"]),
 
   resources: defineTable({
-    tenantId: v.id("tenants"),
+    folder: v.string(),
+    kind: resourceKindValidator,
     title: v.string(),
     description: v.string(),
-    mimeType: v.string(),
-    storageId: v.optional(v.id("_storage")),
-    originalName: v.optional(v.string()),
-    byteSize: v.optional(v.number()),
-    createdBy: v.id("users"),
-    createdAt: v.number(),
-  }).index("by_tenant", ["tenantId"]),
+    url: v.string(), // "" when the resource is an uploaded file
+    file: v.optional(v.object({ storageId: v.id("_storage"), name: v.string(), size: v.number() })),
+    order: v.number(),
+  }).index("by_folder", ["folder"]),
 
-  resourceClassAccess: defineTable({
-    resourceId: v.id("resources"),
-    classId: v.id("classes"),
-  })
-    .index("by_resource", ["resourceId"])
-    .index("by_class", ["classId"]),
-
-  assignments: defineTable({
-    tenantId: v.id("tenants"),
-    classId: v.id("classes"),
-    createdBy: v.id("users"),
+  quizzes: defineTable({
+    slug: v.string(),
+    folder: v.string(),
     title: v.string(),
-    instructions: v.string(),
-    dueAt: v.optional(v.number()),
-    status: v.union(
-      v.literal("DRAFT"),
-      v.literal("PUBLISHED"),
-      v.literal("ARCHIVED"),
-    ),
-    maxAttempts: v.number(),
-    mode: v.union(v.literal("PRACTICE"), v.literal("EXAM")),
-    publishedAt: v.optional(v.number()),
-    closedAt: v.optional(v.number()),
-    shuffleQuestions: v.boolean(),
-    shuffleOptions: v.boolean(),
-    createdAt: v.number(),
+    subtitle: v.string(),
+    minutes: v.number(),
+    code: v.string(), // optional unlock code; "" means none
+    featured: v.boolean(),
+    ielts: ieltsValidator,
+    published: v.boolean(),
+    order: v.number(),
+    sections: v.array(sectionValidator),
+    updatedAt: v.number(),
   })
-    .index("by_tenant", ["tenantId"])
-    .index("by_class", ["classId"]),
+    .index("by_slug", ["slug"])
+    .index("by_folder", ["folder"]),
 
-  questions: defineTable({
-    assignmentId: v.id("assignments"),
-    type: v.union(
-      v.literal("SINGLE_CHOICE"),
-      v.literal("TRUE_FALSE"),
-      v.literal("SHORT_ANSWER"),
-    ),
-    prompt: v.string(),
-    options: v.optional(v.array(v.string())),
-    correctAnswer: v.optional(v.string()),
-    explanation: v.optional(v.string()),
-    points: v.number(),
-    position: v.number(),
-  }).index("by_assignment", ["assignmentId"]),
+  quizUnlocks: defineTable({
+    studentId: v.id("students"),
+    quizId: v.id("quizzes"),
+  }).index("by_student_quiz", ["studentId", "quizId"]),
 
   attempts: defineTable({
-    assignmentId: v.id("assignments"),
-    studentId: v.id("users"),
-    attemptNo: v.number(),
-    status: v.union(
-      v.literal("IN_PROGRESS"),
-      v.literal("SUBMITTED"),
-      v.literal("PENDING_GRADING"),
-      v.literal("GRADED"),
-    ),
-    answers: v.any(),
-    score: v.optional(v.number()),
-    startedAt: v.number(),
-    savedAt: v.number(),
-    submittedAt: v.optional(v.number()),
-    gradedAt: v.optional(v.number()),
-    teacherFeedback: v.optional(v.string()),
+    studentId: v.id("students"),
+    quizId: v.id("quizzes"),
+    correct: v.number(),
+    total: v.number(),
+    wrong: v.number(),
+    unanswered: v.number(),
+    band: v.optional(v.number()),
+    answers: v.record(v.string(), v.union(v.string(), v.number())),
+    submittedAt: v.number(),
   })
-    .index("by_assignment", ["assignmentId"])
-    .index("by_student", ["studentId"])
-    .index("by_assignment_student", ["assignmentId", "studentId"]),
+    .index("by_student", ["studentId", "submittedAt"])
+    .index("by_quiz", ["quizId", "submittedAt"])
+    .index("by_submittedAt", ["submittedAt"]),
 
-  questionBankItems: defineTable({
-    tenantId: v.id("tenants"),
-    createdBy: v.id("users"),
-    type: v.union(
-      v.literal("SINGLE_CHOICE"),
-      v.literal("TRUE_FALSE"),
-      v.literal("SHORT_ANSWER"),
-    ),
-    prompt: v.string(),
-    options: v.optional(v.array(v.string())),
-    correctAnswer: v.optional(v.string()),
-    explanation: v.optional(v.string()),
-    points: v.number(),
-    tags: v.array(v.string()),
-    sourceFilename: v.optional(v.string()),
-    createdAt: v.number(),
-    archivedAt: v.optional(v.number()),
-  }).index("by_tenant", ["tenantId"]),
-
-  enrollmentInquiries: defineTable({
-    tenantId: v.id("tenants"),
-    fullName: v.string(),
-    phone: v.string(),
-    email: v.optional(v.string()),
-    programId: v.optional(v.id("programs")),
-    currentLevel: v.string(),
-    note: v.optional(v.string()),
-    status: v.string(),
-    createdAt: v.number(),
-  }).index("by_tenant", ["tenantId"]),
-
-  auditLogs: defineTable({
-    tenantId: v.id("tenants"),
-    actorId: v.optional(v.id("users")),
-    action: v.string(),
-    entityType: v.string(),
-    entityId: v.optional(v.string()),
-    metadata: v.optional(v.any()),
-    createdAt: v.number(),
-  }).index("by_tenant", ["tenantId"]),
-
-  siteSettings: defineTable({
-    tenantId: v.id("tenants"),
-    brandName: v.string(),
-    tagline: v.string(),
-    teacherName: v.string(),
-    teacherTitle: v.string(),
-    teacherOrganization: v.string(),
-    teacherShortBio: v.string(),
-    teacherLongBio: v.string(),
-    contactEmail: v.optional(v.string()),
-    contactPhone: v.optional(v.string()),
-    seoTitle: v.string(),
-    seoDescription: v.string(),
-    updatedAt: v.number(),
-  }).index("by_tenant", ["tenantId"]),
-
-  departments: defineTable({
-    tenantId: v.id("tenants"),
+  admins: defineTable({
+    email: v.string(),
     name: v.string(),
-    description: v.string(),
-    status: v.string(),
+    passwordHash: v.string(),
+    role: v.union(v.literal("owner"), v.literal("teacher")),
+    active: v.boolean(),
+    mustChangePassword: v.boolean(),
     createdAt: v.number(),
-  }).index("by_tenant", ["tenantId"]),
+    lastLoginAt: v.optional(v.number()),
+  }).index("by_email", ["email"]),
 
-  permissionGroups: defineTable({
-    tenantId: v.id("tenants"),
-    name: v.string(),
-    description: v.string(),
-    status: v.string(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  }).index("by_tenant", ["tenantId"]),
-
-  permissionGroupMenus: defineTable({
-    groupId: v.id("permissionGroups"),
-    menuKey: v.string(),
-  }).index("by_group", ["groupId"]),
-
-  userPermissionGroups: defineTable({
-    userId: v.id("users"),
-    groupId: v.id("permissionGroups"),
+  adminSessions: defineTable({
+    adminId: v.id("admins"),
+    tokenHash: v.string(),
+    expiresAt: v.number(),
   })
-    .index("by_user", ["userId"])
-    .index("by_group", ["groupId"])
-    .index("by_user_group", ["userId", "groupId"]),
+    .index("by_tokenHash", ["tokenHash"])
+    .index("by_admin", ["adminId"])
+    .index("by_expiresAt", ["expiresAt"]),
 
-  workTasks: defineTable({
-    tenantId: v.id("tenants"),
-    title: v.string(),
-    description: v.string(),
-    priority: v.union(
-      v.literal("LOW"),
-      v.literal("MEDIUM"),
-      v.literal("HIGH"),
-      v.literal("URGENT"),
-    ),
-    status: v.union(
-      v.literal("TODO"),
-      v.literal("IN_PROGRESS"),
-      v.literal("DONE"),
-      v.literal("CANCELLED"),
-    ),
-    dueAt: v.optional(v.number()),
-    createdBy: v.id("users"),
-    assignedTo: v.id("users"),
-    createdAt: v.number(),
-    updatedAt: v.number(),
+  loginAttempts: defineTable({
+    kind: v.union(v.literal("student"), v.literal("admin")),
+    key: v.string(),
+    ok: v.boolean(),
+    at: v.number(),
   })
-    .index("by_tenant", ["tenantId"])
-    .index("by_assignee", ["assignedTo"]),
-
-  learningTracks: defineTable({
-    tenantId: v.id("tenants"),
-    slug: v.string(),
-    title: v.string(),
-    summary: v.string(),
-    target: v.string(),
-    status: v.union(
-      v.literal("DRAFT"),
-      v.literal("PUBLISHED"),
-      v.literal("ARCHIVED"),
-    ),
-    position: v.number(),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_tenant", ["tenantId"])
-    .index("by_tenant_slug", ["tenantId", "slug"]),
-
-  learningModules: defineTable({
-    trackId: v.id("learningTracks"),
-    slug: v.string(),
-    title: v.string(),
-    skill: v.string(),
-    summary: v.string(),
-    accent: v.string(),
-    position: v.number(),
-    isPublished: v.boolean(),
-  }).index("by_track", ["trackId"]),
-
-  learningUnits: defineTable({
-    moduleId: v.id("learningModules"),
-    slug: v.string(),
-    title: v.string(),
-    description: v.string(),
-    unitType: v.union(
-      v.literal("LESSON"),
-      v.literal("PRACTICE"),
-      v.literal("MOCK_TEST"),
-      v.literal("RESOURCE"),
-    ),
-    estimatedMinutes: v.optional(v.number()),
-    content: v.any(),
-    position: v.number(),
-    isPublished: v.boolean(),
-  }).index("by_module", ["moduleId"]),
-
-  studentUnitProgress: defineTable({
-    studentId: v.id("users"),
-    unitId: v.id("learningUnits"),
-    status: v.string(),
-    score: v.optional(v.number()),
-    startedAt: v.optional(v.number()),
-    completedAt: v.optional(v.number()),
-    updatedAt: v.number(),
-  })
-    .index("by_student", ["studentId"])
-    .index("by_unit", ["unitId"])
-    .index("by_student_unit", ["studentId", "unitId"]),
+    .index("by_kind_at", ["kind", "at"])
+    .index("by_kind_key_at", ["kind", "key", "at"]),
 });

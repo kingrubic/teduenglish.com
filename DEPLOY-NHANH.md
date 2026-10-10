@@ -1,49 +1,34 @@
-# Triển khai TEDUENGLISH
+# Triển khai TEDU English
 
-## 1. Chuẩn bị
+## Kiến trúc đang chạy
 
-- Máy chủ chạy Docker hoặc Node.js 22.
-- Convex backend (local khi phát triển, Convex Cloud khi production).
-- Domain đã trỏ DNS về máy chủ.
-- HTTPS qua Cloudflare hoặc reverse proxy.
+- Dữ liệu: Convex Cloud, deployment production `accomplished-dinosaur-190`.
+- Web: Next.js production (`next start`) ở cổng 4173 trên máy Mac, chạy bằng launchd (`ai.teduenglish.web`).
+- teduenglish.com → Cloudflare Tunnel → `localhost:4173`.
+- Log: `~/ops/logs/ai.teduenglish.web.log` và `.err.log`.
 
-## 2. Cấu hình
-
-Sao chép `.env.example` thành `.env.local` và điền:
-
-- `NEXT_PUBLIC_CONVEX_URL`: URL Convex, ví dụ `http://127.0.0.1:3210` (local) hoặc URL Convex Cloud.
-- `APP_URL`: domain đầy đủ, ví dụ `https://teduenglish.com`.
-- `NODE_ENV=production`.
-- `BOOTSTRAP_ADMIN_EMAIL` và `BOOTSTRAP_ADMIN_PASSWORD`: chỉ dùng một lần để tạo Admin đầu tiên, sau đó xóa khỏi môi trường.
-- `QUESTION_AI_ENDPOINT` và `QUESTION_AI_TOKEN`: tùy chọn nếu dùng AI/OCR đọc đề linh hoạt.
-
-Không upload `.env.local` lên Git hoặc gửi công khai.
-
-## 3. Cài đặt local
+## Cập nhật phiên bản mới
 
 ```bash
+cd /Users/vsc_agent/projects/teduenglish
 npm ci
-npx convex dev --once
-npm run db:seed
-npm run build
-npm start
+npm run convex:deploy        # nếu có thay đổi trong convex/
+npm run check                # lint, typecheck, test, build
+launchctl kickstart -k gui/$(id -u)/ai.teduenglish.web
+curl -s http://127.0.0.1:4173/api/health   # {"status":"ok","backend":"convex",...}
 ```
 
-## 4. Production
+Cài lại dịch vụ tự khởi động: `zsh scripts/install-autostart.sh`.
 
-1. `npx convex login` rồi `npx convex deploy`.
-2. Đặt `NEXT_PUBLIC_CONVEX_URL` thành URL production.
-3. `npm run db:bootstrap` một lần để tạo Admin.
-4. `npm run build && npm start` hoặc build Docker.
+## Trước khi cho học sinh dùng thật
 
-## 5. Kiểm tra sau triển khai
+1. Đăng nhập `/admin` bằng tài khoản quản trị chính, đổi mật khẩu.
+2. **Cài đặt & tài khoản**: tắt “Hiện mã dùng thử”, điền liên hệ (Zalo lớp) nếu muốn.
+3. **Học sinh**: xoá 3 học sinh mẫu, dùng “Thêm nhiều học sinh” để dán danh sách lớp thật.
+4. Thêm tài khoản cho giáo viên khác (vai trò Giáo viên) nếu cần.
 
-- `/api/health` trả về `status: ok`.
-- Trang chủ, Giới thiệu, Chương trình, Thời khóa biểu hoạt động.
-- Admin đăng nhập được và đổi mật khẩu.
-- Tạo học sinh, thêm vào lớp, upload tài liệu.
-- Tạo bài luyện tập và bài kiểm tra.
-- Học sinh làm/nộp bài; giáo viên xem và chấm bài.
-- `/robots.txt`, `/sitemap.xml` và `/llms.txt` hoạt động.
+## Kiểm tra sau triển khai
 
-Tài liệu chi tiết: `docs/03-production-deploy.md`.
+- `/api/health` trả `status: ok`.
+- Trang chủ hiện màn hình nhập mã; đăng nhập bằng một mã học sinh thấy đúng thư mục.
+- Làm và nộp một bài, kết quả hiện trong `/admin/ket-qua`.

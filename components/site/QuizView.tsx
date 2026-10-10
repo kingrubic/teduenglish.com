@@ -1,0 +1,662 @@
+"use client";
+
+import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "@/convex/_generated/api";
+import type { Answers } from "@/convex/model";
+import { normAnswer } from "@/convex/model";
+import { Rich, copyText, errMsg, sdel, sget, shuffle, signalReady, sset, stamp } from "@/lib/ui";
+import { GateLogin, GateNoAccess, Loading, Missing, Swoosh } from "./parts";
+import { useSite } from "./SiteShell";
+
+type QuizData = NonNullable<FunctionReturnType<typeof api.site.quiz>>;
+type OkQuiz = Extract<QuizData, { status: "ok" }>;
+type Meta = QuizData["meta"];
+type PubSection = OkQuiz["sections"][number];
+type PubQuestion = PubSection["questions"][number];
+type Submitted = FunctionReturnType<typeof api.site.submit>;
+
+type SecAttempt = { si: number; order: number[]; opts: Record<number, number[]> };
+type Attempt = {
+  sections: SecAttempt[];
+  answers: Answers;
+  submitted: boolean;
+  outcome?: Submitted;
+};
+
+export default function QuizView({ id }: { id: string }) {
+  const { token } = useSite();
+  const data = useQuery(api.site.quiz, token === undefined ? "skip" : { token: token ?? undefined, id });
+
+  useEffect(() => {
+    if (data !== undefined) signalReady();
+    if (data) document.title = `${data.meta.title} · TEDU English`;
+    return () => {
+      document.title = "TEDU English";
+    };
+  }, [data]);
+
+  if (data === undefined) return <Loading />;
+  if (data === null) return <Missing />;
+  const m = data.meta;
+
+  return (
+    <>
+      <Link className="back-link" href="/">
+        ← Trang học tập
+      </Link>
+      <section className="banner view-enter">
+        <Swoosh />
+        <p className="eyebrow">{m.folderName}</p>
+        <h1>{m.title}</h1>
+        {m.subtitle && <p>{m.subtitle}</p>}
+        <div className="banner-meta">
+          <span>{m.questionCount} câu</span>
+          {m.minutes > 0 && <span>Khoảng {m.minutes} phút</span>}
+          <span>Chấm tự động</span>
+          {m.ielts && <span>Band tham khảo</span>}
+        </div>
+      </section>
+      {data.status === "login" && <GateLogin title="Đăng nhập để làm bài" note="Nhập mã cá nhân trước, sau đó em sẽ vào thẳng bài này." />}
+      {data.status === "noaccess" && <GateNoAccess name={m.folderName} />}
+      {data.status === "locked" && <UnlockGate meta={m} />}
+      {data.status === "ok" && <QuizRunner key={m.id} meta={m} sections={data.sections} />}
+    </>
+  );
+}
+
+function UnlockGate({ meta }: { meta: Meta }) {
+  const { token, teacher } = useSite();
+  const unlock = useMutation(api.site.unlock);
+  const [code, setCode] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    setBusy(true);
+    try {
+      const r = await unlock({ token, id: meta.id, code });
+      if (!r.ok) setErr(r.error);
+    } catch (e2) {
+      setErr(errMsg(e2));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="gate">
+      <div>
+        <p className="eyebrow">Bài có mã riêng</p>
+        <h2>Nhập mã bài</h2>
+        <p className="small muted">Bài này cần thêm mã do {teacher} đọc trên lớp hoặc gửi trong nhóm.</p>
+      </div>
+      <form className="stack" onSubmit={onSubmit} noValidate>
+        <div className="field">
+          <label htmlFor="quiz-code">Mã bài {meta.title}</label>
+          <input className="input" id="quiz-code" autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="Nhập mã bài" required value={code} onChange={(e) => setCode(e.target.value)} />
+        </div>
+        <p className="alert alert-bad" role="alert" hidden={!err}>
+          {err}
+        </p>
+        <button className="btn btn-primary" type="submit" disabled={busy}>
+          Mở bài
+        </button>
+      </form>
+    </section>
+  );
+}
+
+/* ---------- attempt ---------- */
+
+const FIXED = /^(true|false|not given|yes|no)$/i;
+
+function newAttempt(sections: PubSection[], mix: boolean): Attempt {
+  return {
+    answers: {},
+    submitted: false,
+    sections: sections.map((sec, si) => {
+      const keep = !mix || !!(sec.listen || sec.passage);
+      const order = sec.questions.map((_, i) => i);
+      const opts: Record<number, number[]> = {};
+      sec.questions.forEach((q, qi) => {
+        if (q.type === "mcq") {
+          const o = q.options.map((_, i) => i);
+          opts[qi] = keep || q.options.every((x) => FIXED.test(x)) ? o : shuffle(o);
+        }
+      });
+      return { si, order: keep ? order : shuffle(order), opts };
+    }),
+  };
+}
+
+function draftFits(d: Attempt | null, sections: PubSection[]): d is Attempt {
+  return (
+    !!d &&
+    !d.submitted &&
+    Array.isArray(d.sections) &&
+    d.sections.length === sections.length &&
+    d.sections.every((s, i) => s.order.length === sections[i].questions.length)
+  );
+}
+
+function answeredCount(sections: PubSection[], answers: Answers) {
+  let n = 0;
+  sections.forEach((sec, si) =>
+    sec.questions.forEach((q, qi) => {
+      const v = answers[`${si}-${qi}`];
+      if (q.type === "fill" ? normAnswer(v) !== "" : typeof v === "number") n++;
+    }),
+  );
+  return n;
+}
+
+function QuizRunner({ meta, sections: liveSections }: { meta: Meta; sections: PubSection[] }) {
+  const { token, teacher, home, toast } = useSite();
+  const submitMut = useMutation(api.site.submit);
+  // Freeze the questions for this sitting, even if a teacher edits the quiz meanwhile.
+  const [sections] = useState(liveSections);
+  const draftKey = `tedu.draft.${meta.id}`;
+  const [att, setAtt] = useState<Attempt>(() => newAttempt(sections, false));
+  const [busy, setBusy] = useState(false);
+  const [showCopy, setShowCopy] = useState<string | null>(null);
+  const resultRef = useRef<HTMLElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Restore an unfinished attempt after a reload (same tab).
+  useEffect(() => {
+    const d = sget<Attempt | null>("sessionStorage", draftKey, null);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (draftFits(d, sections)) setAtt(d);
+  }, [draftKey, sections]);
+
+  useEffect(() => {
+    if (!att.submitted && Object.keys(att.answers).length) sset("sessionStorage", draftKey, att);
+  }, [att, draftKey]);
+
+  const total = meta.questionCount;
+  const answered = answeredCount(sections, att.answers);
+
+  function setAnswer(key: string, value: string | number) {
+    setAtt((a) => (a.submitted ? a : { ...a, answers: { ...a.answers, [key]: value } }));
+  }
+
+  /* ---------- listening (browser text-to-speech) ---------- */
+  const [tts, setTts] = useState<{ sec: number | null; playing: boolean; paused: boolean; msg: string }>({ sec: null, playing: false, paused: false, msg: "" });
+  const [rate, setRate] = useState(0.9);
+  const ttsToken = useRef(0);
+
+  const ttsStop = useCallback(() => {
+    ttsToken.current++;
+    try {
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      if ("speechSynthesis" in window) window.speechSynthesis.getVoices(); // voices load asynchronously
+    } catch {
+      /* ignore */
+    }
+    return ttsStop;
+  }, [ttsStop]);
+
+  function ttsPlay(si: number, r = rate) {
+    const sec = sections[si];
+    if (!sec?.listen) return;
+    if (!("speechSynthesis" in window) || typeof window.SpeechSynthesisUtterance !== "function") {
+      setTts({ sec: si, playing: false, paused: false, msg: "Trình duyệt này chưa hỗ trợ đọc audio. Em thử mở bằng Chrome, Edge hoặc Safari bản mới nhé." });
+      return;
+    }
+    ttsStop();
+    const synth = window.speechSynthesis;
+    const voices = synth.getVoices().filter((v) => /^en[-_]/i.test(v.lang));
+    const gb = voices.filter((v) => /gb/i.test(v.lang));
+    const pool = gb.length >= 2 ? gb : voices;
+    const speakers: Record<string, number> = {};
+    let count = 0;
+    const lines = sec.listen.split("\n").map((s) => s.trim()).filter(Boolean);
+    const tok = ++ttsToken.current;
+
+    lines.forEach((line, i) => {
+      const mm = line.match(/^([A-Za-z][\w .'-]{0,24}):\s+(.+)$/);
+      const who = mm ? mm[1] : "_";
+      if (!(who in speakers)) speakers[who] = count++;
+      const u = new window.SpeechSynthesisUtterance(mm ? mm[2] : line);
+      u.lang = "en-GB";
+      u.rate = r;
+      if (pool.length) u.voice = pool[speakers[who] % pool.length];
+      if (pool.length < 2) u.pitch = speakers[who] % 2 ? 1.15 : 0.92; // tell speakers apart with one voice
+      if (i === lines.length - 1) {
+        u.onend = () => {
+          if (ttsToken.current !== tok) return;
+          setTts({ sec: si, playing: false, paused: false, msg: "Đã phát xong. Em có thể phát lại hoặc nộp bài." });
+        };
+      }
+      u.onerror = (e) => {
+        if (ttsToken.current !== tok || e.error === "canceled" || e.error === "interrupted") return;
+        setTts({ sec: si, playing: false, paused: false, msg: "Không phát được audio trên thiết bị này. Em kiểm tra âm lượng hoặc thử trình duyệt khác." });
+      };
+      synth.speak(u);
+    });
+    setTts({ sec: si, playing: true, paused: false, msg: "Đang phát… Nghe và trả lời các câu bên dưới." });
+  }
+
+  /* ---------- submit / retry ---------- */
+  async function submit() {
+    if (!token || busy) return;
+    ttsStop();
+    setTts((t) => ({ ...t, playing: false, paused: false }));
+    setBusy(true);
+    try {
+      const outcome = await submitMut({ token, id: meta.id, answers: att.answers });
+      setAtt((a) => ({ ...a, submitted: true, outcome }));
+      sdel("sessionStorage", draftKey);
+    } catch (e) {
+      toast(errMsg(e, "Chưa nộp được bài. Em thử lại nhé."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!att.submitted || !resultRef.current) return;
+    resultRef.current.scrollIntoView({ block: "start" });
+    try {
+      resultRef.current.focus({ preventScroll: true });
+    } catch {
+      /* ignore */
+    }
+  }, [att.submitted]);
+
+  function retry() {
+    ttsStop();
+    setTts({ sec: null, playing: false, paused: false, msg: "" });
+    setShowCopy(null);
+    setAtt(newAttempt(sections, true));
+    rootRef.current?.scrollIntoView({ block: "start" });
+  }
+
+  function copyResult() {
+    const o = att.outcome;
+    const st = home?.student;
+    if (!o || !st) return;
+    const r = o.result;
+    const pct = r.total ? Math.round((r.correct / r.total) * 100) : 0;
+    const text = [
+      "TEDU English · Kết quả bài làm",
+      `Học sinh: ${st.name} (${st.className})`,
+      `Bài: ${meta.folderName} · ${meta.title}`,
+      `Điểm: ${r.correct}/${r.total} (${pct}%)${r.band != null ? ` · Band tham khảo ${r.band.toFixed(1)}` : ""}`,
+      `Thời gian: ${stamp(o.submittedAt)}`,
+    ].join("\n");
+    copyText(text, () => toast(`Đã sao chép. Em dán vào nhóm Zalo lớp để gửi ${teacher} nhé.`), () => setShowCopy(text));
+  }
+
+  /* ---------- render ---------- */
+  let num = 0;
+  return (
+    <div className="quiz-wrap" ref={rootRef}>
+      {att.submitted && att.outcome && (
+        <ResultBlock outcome={att.outcome} ielts={!!meta.ielts} teacher={teacher} resultRef={resultRef} onRetry={retry} onCopy={copyResult} copyFallback={showCopy} />
+      )}
+      {att.sections.map((sa) => {
+        const sec = sections[sa.si];
+        const cards = sa.order.map((qi) => {
+          num++;
+          const key = `${sa.si}-${qi}`;
+          return (
+            <QuestionCard
+              key={key}
+              k={key}
+              q={sec.questions[qi]}
+              num={num}
+              optOrder={sa.opts[qi]}
+              value={att.answers[key]}
+              review={att.submitted ? att.outcome?.review[key] : undefined}
+              onAnswer={setAnswer}
+            />
+          );
+        });
+        const title = (
+          <h2 className="q-section-title">
+            {sec.title || "Câu hỏi"}
+            <small>{sec.questions.length} câu</small>
+          </h2>
+        );
+        if (sec.passage) {
+          const lines = sec.passage.split("\n");
+          const body = lines.slice(1).join("\n").replace(/^\n+/, "");
+          return (
+            <section className="q-section" key={sa.si}>
+              {title}
+              <div className="reading-layout">
+                <article className="passage" aria-label="Bài đọc">
+                  <p className="p-title">{lines[0]}</p>
+                  {body}
+                </article>
+                <div className="q-col">{cards}</div>
+              </div>
+            </section>
+          );
+        }
+        if (sec.listen) {
+          const active = tts.sec === sa.si && tts.playing;
+          return (
+            <section className="q-section" key={sa.si}>
+              {title}
+              <div className="listen-box">
+                <div className="listen-controls">
+                  <button className="btn btn-primary btn-sm" type="button" onClick={() => ttsPlay(sa.si)}>
+                    {active ? "↺ Phát lại từ đầu" : "▶ Phát audio"}
+                  </button>
+                  {active && !tts.paused && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={() => {
+                        try {
+                          window.speechSynthesis.pause();
+                        } catch {
+                          /* ignore */
+                        }
+                        setTts((t) => ({ ...t, paused: true, msg: "Đã tạm dừng." }));
+                      }}
+                    >
+                      Tạm dừng
+                    </button>
+                  )}
+                  {active && tts.paused && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={() => {
+                        try {
+                          window.speechSynthesis.resume();
+                        } catch {
+                          /* ignore */
+                        }
+                        setTts((t) => ({ ...t, paused: false, msg: "Đang phát…" }));
+                      }}
+                    >
+                      Tiếp tục
+                    </button>
+                  )}
+                  {active && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      type="button"
+                      onClick={() => {
+                        ttsStop();
+                        setTts({ sec: sa.si, playing: false, paused: false, msg: "Đã dừng. Bấm Phát audio để nghe lại từ đầu." });
+                      }}
+                    >
+                      Dừng
+                    </button>
+                  )}
+                  <span className="speed" role="group" aria-label="Tốc độ đọc">
+                    {[
+                      [0.75, "Chậm"],
+                      [0.9, "Chuẩn"],
+                    ].map(([r, label]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        aria-pressed={rate === r}
+                        onClick={() => {
+                          setRate(r as number);
+                          if (tts.playing && tts.sec != null) ttsPlay(tts.sec, r as number);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </span>
+                  <span className={`eq${active && !tts.paused ? " on" : ""}`} aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                </div>
+                <p className="listen-status">
+                  {tts.sec === sa.si && tts.msg ? tts.msg : "Audio được đọc bằng giọng tiếng Anh có sẵn trên thiết bị. Em có thể nghe lại nhiều lần."}
+                </p>
+                {att.submitted && (
+                  <details>
+                    <summary>Xem lời thoại (transcript)</summary>
+                    <div className="transcript">{sec.listen}</div>
+                  </details>
+                )}
+              </div>
+              {cards}
+            </section>
+          );
+        }
+        return (
+          <section className="q-section" key={sa.si}>
+            {title}
+            {cards}
+          </section>
+        );
+      })}
+      {!att.submitted && (
+        <div className="submit-bar">
+          <div className="progress-row">
+            <span>
+              Đã làm {answered}/{total} câu
+            </span>
+            <span className="progress" aria-hidden="true">
+              <i style={{ width: `${total ? (answered / total) * 100 : 0}%` }} />
+            </span>
+          </div>
+          <button className="btn btn-primary btn-block" type="button" onClick={submit} disabled={busy}>
+            {busy ? "Đang chấm bài…" : answered >= total ? "Nộp bài và xem kết quả" : `Nộp bài (${total - answered} câu chưa làm)`}
+          </button>
+          <p className="tiny muted" style={{ textAlign: "center" }}>
+            Em có thể nộp bất cứ lúc nào; câu bỏ trống được tính là chưa làm.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type Review = Submitted["review"][string];
+
+function QuestionCard({
+  k,
+  q,
+  num,
+  optOrder,
+  value,
+  review,
+  onAnswer,
+}: {
+  k: string;
+  q: PubQuestion;
+  num: number;
+  optOrder?: number[];
+  value: string | number | undefined;
+  review?: Review;
+  onAnswer: (key: string, v: string | number) => void;
+}) {
+  const done = !!review;
+  const ok = !!review?.ok;
+  const state = done ? (ok ? " ok" : " no") : "";
+
+  let body: React.ReactNode;
+  if (q.type === "fill") {
+    body = (
+      <input
+        className={`input fill-input${state}`}
+        id={`ans-${k}`}
+        value={typeof value === "string" ? value : ""}
+        onChange={(e) => onAnswer(k, e.target.value)}
+        placeholder="Nhập đáp án"
+        autoComplete="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        aria-label={`Đáp án câu ${num}`}
+        disabled={done}
+      />
+    );
+  } else {
+    body = (
+      <div className={`opts${done ? " locked" : ""}`} role="radiogroup" aria-label={`Câu ${num}`}>
+        {(optOrder ?? q.options.map((_, i) => i)).map((oi, pos) => {
+          const sel = value === oi;
+          let c = "";
+          if (done) c = oi === review!.answer ? " right" : sel ? " wrong" : "";
+          else if (sel) c = " sel";
+          return (
+            <label className={`opt${c}`} key={oi}>
+              <input type="radio" name={`q-${k}`} value={oi} checked={sel} disabled={done} onChange={() => onAnswer(k, oi)} />
+              <span className="letter">{String.fromCharCode(65 + pos)}</span>
+              <span className="o-text">
+                <Rich text={q.options[oi]} />
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    );
+  }
+
+  let explain: React.ReactNode = null;
+  if (review) {
+    const right = q.type === "fill" ? String(review.answer) : <Rich text={q.options[review.answer as number] ?? ""} />;
+    const given = q.type === "fill" ? (typeof value === "string" ? value : "") : typeof value === "number" ? <Rich text={q.options[value]} /> : "";
+    explain = (
+      <p className="explain">
+        {!ok && given ? (
+          <>
+            Em trả lời: <b>{given}</b> ·{" "}
+          </>
+        ) : null}
+        Đáp án: <b>{right}</b>
+        {review.explain ? (
+          <>
+            {" · "}
+            <Rich text={review.explain} />
+          </>
+        ) : null}
+      </p>
+    );
+  }
+
+  return (
+    <article className={`q-card${state}`} id={`q-${k}`}>
+      <div className="q-head">
+        <span>Câu {num}</span>
+        {q.tag && <span>{q.tag}</span>}
+        {done && (ok ? <span className="state-ok">Đúng</span> : <span className="state-no">{review!.answered ? "Chưa đúng" : "Chưa làm"}</span>)}
+      </div>
+      <p className="q-text">
+        <Rich text={q.q} />
+      </p>
+      {body}
+      {explain}
+    </article>
+  );
+}
+
+function ResultBlock({
+  outcome,
+  ielts,
+  teacher,
+  resultRef,
+  onRetry,
+  onCopy,
+  copyFallback,
+}: {
+  outcome: Submitted;
+  ielts: boolean;
+  teacher: string;
+  resultRef: React.RefObject<HTMLElement | null>;
+  onRetry: () => void;
+  onCopy: () => void;
+  copyFallback: string | null;
+}) {
+  const r = outcome.result;
+  const pct = r.total ? Math.round((r.correct / r.total) * 100) : 0;
+  const band = ielts ? r.band : null;
+  let head: string;
+  let msg: string;
+  if (pct >= 85) {
+    head = "Excellent work!";
+    msg = "Em làm rất tốt. Giữ vững phong độ nhé!";
+  } else if (pct >= 60) {
+    head = "Good progress!";
+    msg = "Xem lại các câu sai bên dưới rồi làm lại để nhớ lâu hơn.";
+  } else {
+    head = "Keep going!";
+    msg = "Mỗi lần làm là một lần tiến bộ. Đọc phần giải thích và thử lại nhé.";
+  }
+  return (
+    <section className="result" id="result" tabIndex={-1} ref={resultRef}>
+      <div className="score-dial" style={{ "--p": pct } as React.CSSProperties}>
+        <div className="inner">
+          <b>
+            {r.correct}/{r.total}
+          </b>
+          <small>{pct}%</small>
+        </div>
+      </div>
+      <div>
+        <p className="eyebrow">Kết quả</p>
+        <h2>{head}</h2>
+        <p className="r-msg">{msg}</p>
+        <div className="result-stats">
+          <span className="stat">
+            Đúng <b>{r.correct}</b>
+          </span>
+          <span className="stat">
+            Sai <b>{r.wrong}</b>
+          </span>
+          <span className="stat">
+            Chưa làm <b>{r.unanswered}</b>
+          </span>
+          {band != null && (
+            <span className="stat band">
+              Band tham khảo <b>{band.toFixed(1)}</b>
+            </span>
+          )}
+        </div>
+        <div className="result-actions">
+          <button className="btn btn-primary btn-sm" type="button" onClick={onRetry}>
+            Làm lại (xáo trộn câu hỏi)
+          </button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={onCopy}>
+            Sao chép kết quả gửi {teacher}
+          </button>
+          <Link className="btn btn-ghost btn-sm" href="/">
+            Về trang học tập
+          </Link>
+        </div>
+        <p className="tiny muted" style={{ marginTop: 10 }}>
+          Kết quả đã được lưu, {teacher} xem được điểm của em trong khu vực giáo viên.
+        </p>
+        {copyFallback && (
+          <div className="copy-fallback">
+            <label className="tiny muted" htmlFor="copy-text">
+              Chọn và sao chép đoạn này:
+            </label>
+            <textarea className="textarea" id="copy-text" readOnly value={copyFallback} autoFocus onFocus={(e) => e.currentTarget.select()} />
+          </div>
+        )}
+        {band != null && (
+          <p className="tiny muted" style={{ marginTop: 10 }}>
+            Band ước tính bằng cách quy đổi số câu đúng sang thang 40 câu; đây không phải điểm IELTS chính thức.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}

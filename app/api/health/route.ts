@@ -1,17 +1,15 @@
-import { NextResponse } from "next/server";
-import { api, convex } from "@/lib/convex";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const url = process.env.NEXT_PUBLIC_CONVEX_URL;
   try {
-    await convex().query(api.auth.ping, {});
-    return NextResponse.json(
-      { status: "ok", database: "connected", backend: "convex" },
-      { headers: { "Cache-Control": "no-store" } },
-    );
+    if (!url) throw new Error("NEXT_PUBLIC_CONVEX_URL is not set");
+    const home = await new ConvexHttpClient(url).query(api.site.home, {});
+    return Response.json({ status: "ok", backend: "convex", folders: home.folders.length });
   } catch {
-    return NextResponse.json(
-      { status: "error", database: "unavailable", backend: "convex" },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
-    );
+    return Response.json({ status: "error", backend: "convex" }, { status: 503 });
   }
 }

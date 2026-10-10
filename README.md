@@ -1,47 +1,61 @@
-# English Learning Hub / TEDUENGLISH
+# TEDU English — góc luyện tập cho học sinh
 
-Next.js App Router frontend with a **Convex local backend**.
+Next.js (App Router) + **Convex Cloud** (deployment `accomplished-dinosaur-190`).
+Giao diện lấy từ bản thiết kế tĩnh `tedu-english` (đăng nhập bằng mã cá nhân, thư mục bài học,
+bài làm chấm tự động, nghe/đọc IELTS), có thêm backend thật và trang quản trị `/admin`.
 
-## Development
+## Cấu trúc
+
+```
+app/(site)/            trang học sinh: /, /thu-muc/[id], /bai/[id]
+app/admin/             khu vực giáo viên: học sinh, thư mục, bài làm, tài liệu, kết quả, cài đặt
+components/site/       giao diện học sinh (port từ app.js gốc)
+components/admin/      giao diện quản trị
+convex/schema.ts       bảng dữ liệu
+convex/site.ts         API cho học sinh (đăng nhập bằng mã, làm bài, chấm điểm trên server)
+convex/admin.ts        API quản trị (mọi hàm đều kiểm tra phiên đăng nhập admin)
+convex/model.ts        logic chấm điểm, band IELTS, chuẩn hoá đáp án (dùng chung client/server)
+convex/seed.ts         lệnh nội bộ: nạp dữ liệu mẫu, tạo/xoá admin, xoá tiến độ một học sinh
+app/site.css           CSS gốc của bản thiết kế (giữ nguyên)
+```
+
+## Bảo mật
+
+- Đáp án và giải thích chỉ nằm trên Convex; học sinh chỉ nhận đáp án sau khi nộp bài.
+- Mã bài (ví dụ `TS10`) được kiểm tra trên server.
+- File PDF lưu trong Convex Storage (tối đa 50 MB/file). Link file chỉ được trả về cho học sinh có quyền vào thư mục;
+  học sinh xem bằng pdf.js (`components/site/DocReader.tsx`, worker được chép vào `public/` khi chạy dev/build).
+  Xoá tài liệu là xoá luôn file; file tải lên nhưng không lưu sẽ được cron dọn sau 1 ngày.
+- Admin đăng nhập bằng email + mật khẩu (PBKDF2-SHA256, 100k vòng), phiên 7 ngày, khoá 15 phút sau 5 lần sai.
+- Đăng nhập học sinh có giới hạn chung 40 lần sai/phút để chống dò mã.
+- Tài khoản mới tạo luôn dùng mật khẩu tạm và bắt buộc đổi ở lần đăng nhập đầu.
+
+## Lệnh thường dùng
 
 ```bash
 npm install
-npx convex dev --once
-npm run db:seed
-npm run dev
+npm run dev                 # http://localhost:4173 (dùng Convex Cloud trong .env.local)
+npm run convex:deploy       # đẩy thay đổi trong convex/ lên production
+npm run check               # lint + typecheck + test + build
 ```
 
-Keep `npx convex dev` running in a second terminal while you develop, or use:
+`.env.local` (không commit) cần:
+
+```
+NEXT_PUBLIC_CONVEX_URL=https://accomplished-dinosaur-190.convex.cloud
+APP_URL=https://teduenglish.com
+CONVEX_DEPLOY_KEY=prod:accomplished-dinosaur-190|...
+```
+
+Lệnh vận hành (chạy trong thư mục dự án):
 
 ```bash
-npm run dev:all
+# Tạo hoặc cấp lại tài khoản quản trị chính (mật khẩu tạm, phải đổi khi đăng nhập)
+npx convex run seed:bootstrapAdmin '{"email":"ten@example.com","name":"Tên","password":"MatKhauTam123"}'
+# Xoá một tài khoản admin
+npx convex run seed:removeAdmin '{"email":"ten@example.com"}'
+# Xoá điểm + mã bài đã mở của một học sinh (ví dụ mã dùng thử)
+npx convex run seed:resetStudentProgress '{"code":"demo2026"}'
 ```
 
-The app runs at [http://localhost:4173](http://localhost:4173). Convex local backend defaults to `http://127.0.0.1:3210`.
-
-Demo password for development accounts: `Demo@12345`.
-
-- Teacher / Admin: `teacher@example.test`
-- Coordinator / Mod: `mod@example.test`
-- Student: `student@example.test`
-- Student outside seeded class: `outsider@example.test`
-
-Never create these accounts in production.
-
-## Production readiness
-
-Implemented backend flows include account lifecycle and role defaults, student enrollment, class schedules, private learning materials, question-bank imports from CSV/JSON/TXT/DOCX/text-based PDF, practice and exam assignments, autosave/submission, automatic objective scoring, manual written-answer grading, audit logs, login throttling, production bootstrap, health checks, robots/sitemap, and Docker deployment.
-
-Run before every release:
-
-```bash
-npm ci
-npx convex deploy
-npm run lint
-npm run typecheck
-npm test
-npm run build
-npm audit --omit=dev
-```
-
-See `docs/03-production-deploy.md` for the deployment order and optional AI question extraction configuration.
+Chi tiết triển khai: `DEPLOY-NHANH.md`.

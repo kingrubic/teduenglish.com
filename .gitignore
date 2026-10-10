@@ -7,3 +7,10 @@ data/uploads/
 AGENTS.md
 CLAUDE.md
 tsconfig.tsbuildinfo
+
+# Secrets
+*Convex Prod Key*.md
+.DS_Store
+
+# Copied from pdfjs-dist on dev/build
+public/pdf.worker.min.mjs

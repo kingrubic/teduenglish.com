@@ -8,13 +8,13 @@
  * @module
  */
 
-import type * as auth from "../auth.js";
-import type * as cms from "../cms.js";
-import type * as helpers from "../helpers.js";
-import type * as mutations from "../mutations.js";
-import type * as portal from "../portal.js";
-import type * as public_ from "../public.js";
+import type * as admin from "../admin.js";
+import type * as crons from "../crons.js";
+import type * as lib from "../lib.js";
+import type * as model from "../model.js";
 import type * as seed from "../seed.js";
+import type * as seedData from "../seedData.js";
+import type * as site from "../site.js";
 
 import type {
   ApiFromModules,
@@ -23,13 +23,13 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  auth: typeof auth;
-  cms: typeof cms;
-  helpers: typeof helpers;
-  mutations: typeof mutations;
-  portal: typeof portal;
-  public: typeof public_;
+  admin: typeof admin;
+  crons: typeof crons;
+  lib: typeof lib;
+  model: typeof model;
   seed: typeof seed;
+  seedData: typeof seedData;
+  site: typeof site;
 }>;
 
 /**
