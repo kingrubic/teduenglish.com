@@ -2,18 +2,10 @@ import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, internalQuery, mutation, query, type QueryCtx } from "./_generated/server";
 import { MAX_CLARIFY_FILE_BYTES, QUESTION_IDS } from "./clarifyData";
-import { fail, previewAdmin } from "./lib";
+import { fail } from "./lib";
 
-/* /need-clarify: the teacher answers open questions. Access with the secret link key
- * (Convex env CLARIFY_KEY) or a signed-in admin session. */
-
-const access = { key: v.optional(v.string()), adminToken: v.optional(v.string()) };
-
-async function allowed(ctx: QueryCtx, args: { key?: string; adminToken?: string }) {
-  const secret = process.env.CLARIFY_KEY;
-  if (secret && args.key && args.key === secret) return true;
-  return !!(await previewAdmin(ctx, args.adminToken));
-}
+/* /need-clarify: the teacher answers open questions. Open to anyone with the URL
+ * (the page is not linked publicly and not indexed). */
 
 async function withUrls(ctx: QueryCtx, a: Doc<"clarifyAnswers">) {
   return {
@@ -27,9 +19,8 @@ async function withUrls(ctx: QueryCtx, a: Doc<"clarifyAnswers">) {
 }
 
 export const answers = query({
-  args: access,
-  handler: async (ctx, args) => {
-    if (!(await allowed(ctx, args))) return null;
+  args: {},
+  handler: async (ctx) => {
     const rows = await ctx.db.query("clarifyAnswers").collect();
     return Promise.all(rows.map((a) => withUrls(ctx, a)));
   },
@@ -41,9 +32,8 @@ async function rowFor(ctx: QueryCtx, qid: string) {
 }
 
 export const save = mutation({
-  args: { ...access, qid: v.string(), choices: v.array(v.string()), text: v.string(), by: v.string() },
+  args: { qid: v.string(), choices: v.array(v.string()), text: v.string(), by: v.string() },
   handler: async (ctx, args) => {
-    if (!(await allowed(ctx, args))) fail("Link không hợp lệ hoặc đã hết hạn.");
     const row = await rowFor(ctx, args.qid);
     const data = { choices: args.choices.slice(0, 10).map((c) => c.slice(0, 200)), text: args.text.slice(0, 10_000), by: args.by.trim().slice(0, 80), updatedAt: Date.now() };
     if (row) await ctx.db.patch(row._id, data);
@@ -52,17 +42,15 @@ export const save = mutation({
 });
 
 export const uploadUrl = mutation({
-  args: access,
-  handler: async (ctx, args) => {
-    if (!(await allowed(ctx, args))) fail("Link không hợp lệ hoặc đã hết hạn.");
+  args: {},
+  handler: async (ctx) => {
     return ctx.storage.generateUploadUrl();
   },
 });
 
 export const attach = mutation({
-  args: { ...access, qid: v.string(), storageId: v.id("_storage"), name: v.string(), by: v.string() },
+  args: { qid: v.string(), storageId: v.id("_storage"), name: v.string(), by: v.string() },
   handler: async (ctx, args) => {
-    if (!(await allowed(ctx, args))) fail("Link không hợp lệ hoặc đã hết hạn.");
     const meta = await ctx.db.system.get(args.storageId);
     if (!meta) fail("File tải lên không còn, vui lòng chọn lại.");
     if (meta.size > MAX_CLARIFY_FILE_BYTES) fail("File quá lớn (tối đa 100 MB).");
@@ -76,9 +64,8 @@ export const attach = mutation({
 });
 
 export const detach = mutation({
-  args: { ...access, qid: v.string(), storageId: v.id("_storage") },
+  args: { qid: v.string(), storageId: v.id("_storage") },
   handler: async (ctx, args) => {
-    if (!(await allowed(ctx, args))) fail("Link không hợp lệ hoặc đã hết hạn.");
     const row = await rowFor(ctx, args.qid);
     if (!row) return;
     await ctx.db.patch(row._id, { files: row.files.filter((f) => f.storageId !== args.storageId), updatedAt: Date.now() });

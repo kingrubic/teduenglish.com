@@ -11,26 +11,19 @@ import { formatBytes } from "@/convex/model";
 import { Swoosh } from "@/components/site/parts";
 import { errMsg, sget, sset, stamp } from "@/lib/ui";
 
-type Answer = NonNullable<FunctionReturnType<typeof api.clarify.answers>>[number];
-type Access = { key?: string; adminToken?: string };
-
-const KEY_STORE = "tedu.clarify.key";
+type Answer = FunctionReturnType<typeof api.clarify.answers>[number];
 const NAME_STORE = "tedu.clarify.name";
 
 export default function ClarifyPage() {
-  const [access, setAccess] = useState<Access | null>(null);
   const [name, setName] = useState("");
 
   useEffect(() => {
-    const fromUrl = new URLSearchParams(window.location.search).get("k") ?? undefined;
-    if (fromUrl) sset("localStorage", KEY_STORE, fromUrl);
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setAccess({ key: fromUrl ?? sget<string | undefined>("localStorage", KEY_STORE, undefined), adminToken: sget<string | undefined>("localStorage", "tedu.admin", undefined) });
     setName(sget("localStorage", NAME_STORE, ""));
     document.title = "Câu hỏi cho thầy · TEDU English";
   }, []);
 
-  const answers = useQuery(api.clarify.answers, access ?? "skip");
+  const answers = useQuery(api.clarify.answers, {});
   const byId = new Map((answers ?? []).map((a) => [a.qid, a]));
   const answered = QUESTIONS.filter((q) => isAnswered(byId.get(q.id))).length;
   const pct = Math.round((answered / QUESTIONS.length) * 100);
@@ -73,21 +66,10 @@ export default function ClarifyPage() {
           </div>
         </section>
 
-        {access === null || answers === undefined ? (
+        {answers === undefined ? (
           <p className="empty" style={{ marginTop: 18 }}>
             Đang tải…
           </p>
-        ) : answers === null ? (
-          <section className="gate" style={{ marginInline: "auto" }}>
-            <div>
-              <p className="eyebrow">Cần link riêng</p>
-              <h2>Link chưa đúng hoặc thiếu mã</h2>
-              <p className="small muted">Thầy mở đúng đường link đã được gửi (có đoạn “?k=…” ở cuối), hoặc đăng nhập Khu vực giáo viên trên máy này rồi tải lại trang.</p>
-            </div>
-            <Link className="btn btn-primary" href="/admin">
-              Đăng nhập khu vực giáo viên
-            </Link>
-          </section>
         ) : (
           <>
             <div className="cl-progress">
@@ -186,7 +168,7 @@ export default function ClarifyPage() {
                 {QUESTIONS.map((q, i) => (
                   <div key={q.id}>
                     {(i === 0 || QUESTIONS[i - 1].group !== q.group) && <h3 className="cl-group">{q.group}</h3>}
-                    <QuestionCard q={q} num={i + 1} answer={byId.get(q.id) ?? null} access={access} name={name} />
+                    <QuestionCard q={q} num={i + 1} answer={byId.get(q.id) ?? null} name={name} />
                   </div>
                 ))}
               </div>
@@ -206,7 +188,7 @@ function isAnswered(a: Answer | null | undefined) {
   return !!a && (a.choices.length > 0 || a.text.trim() !== "" || a.files.length > 0);
 }
 
-function QuestionCard({ q, num, answer, access, name }: { q: ClarifyQuestion; num: number; answer: Answer | null; access: Access; name: string }) {
+function QuestionCard({ q, num, answer, name }: { q: ClarifyQuestion; num: number; answer: Answer | null; name: string }) {
   const save = useMutation(api.clarify.save);
   const uploadUrl = useMutation(api.clarify.uploadUrl);
   const attach = useMutation(api.clarify.attach);
@@ -224,7 +206,7 @@ function QuestionCard({ q, num, answer, access, name }: { q: ClarifyQuestion; nu
     latest.current = next;
     setState("saving");
     try {
-      await save({ ...access, qid: q.id, choices: next.choices, text: next.text, by: name });
+      await save({ qid: q.id, choices: next.choices, text: next.text, by: name });
       if (latest.current === next) setState("saved");
     } catch (e) {
       setState("error");
@@ -258,10 +240,10 @@ function QuestionCard({ q, num, answer, access, name }: { q: ClarifyQuestion; nu
       }
       setUploading(file.name);
       try {
-        const res = await fetch(await uploadUrl(access), { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+        const res = await fetch(await uploadUrl({}), { method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
         if (!res.ok) throw new Error(String(res.status));
         const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
-        await attach({ ...access, qid: q.id, storageId, name: file.name, by: name });
+        await attach({ qid: q.id, storageId, name: file.name, by: name });
       } catch (e) {
         setErr(errMsg(e, `Chưa tải được “${file.name}”, thử lại nhé.`));
       }
@@ -314,7 +296,7 @@ function QuestionCard({ q, num, answer, access, name }: { q: ClarifyQuestion; nu
                 className="link-btn danger"
                 type="button"
                 aria-label={`Xoá ${f.name}`}
-                onClick={() => confirm(`Xoá file “${f.name}”?`) && detach({ ...access, qid: q.id, storageId: f.storageId }).catch((e) => setErr(errMsg(e)))}
+                onClick={() => confirm(`Xoá file “${f.name}”?`) && detach({ qid: q.id, storageId: f.storageId }).catch((e) => setErr(errMsg(e)))}
               >
                 ✕
               </button>
