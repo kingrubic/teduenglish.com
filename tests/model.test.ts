@@ -83,3 +83,51 @@ describe("shared parsers", () => {
     ]);
   });
 });
+
+describe("writing & class lists", () => {
+  it("counts words and skips essays when auto-grading", async () => {
+    const { wordCount, grade } = await import("@/convex/model");
+    expect(wordCount("  The chart shows — a clear rise.\n\nIn 2010, 45% ")).toBe(9);
+    const sections = [{ title: "W", questions: [{ type: "mcq" as const, q: "x", options: ["a", "b"], answer: 1 }, { type: "essay" as const, q: "Write", minWords: 150 }] }];
+    expect(grade(sections, { "0-0": 1, "0-1": "some text" })).toEqual({ correct: 1, total: 1, wrong: 0, unanswered: 0 });
+  });
+
+  it("rounds IELTS writing criteria like the official scale", async () => {
+    const { writingBand } = await import("@/convex/model");
+    expect(writingBand([6, 6, 6, 7])).toBe(6.5); // 6.25 → 6.5
+    expect(writingBand([6, 7, 7, 7])).toBe(7); // 6.75 → 7
+    expect(writingBand([6, 6, 6, 6.5])).toBe(6); // 6.125 → 6
+    expect(writingBand([6, 6])).toBeNull();
+  });
+
+  it("builds phone-based codes", async () => {
+    const { phoneCode } = await import("@/convex/model");
+    expect(phoneCode("Trần Bảo An", "0912 344 821")).toBe("baoan4821");
+    expect(phoneCode("Đặng Thị Ngọc Ánh", "+84 98-765-4321")).toBe("ngocanh4321");
+    expect(phoneCode("Minh", "12")).toBeNull();
+  });
+
+  it("finds name, class and phone columns in an Excel sheet", async () => {
+    const { tableToClassList } = await import("@/lib/excel");
+    const table = [
+      ["DANH SÁCH LỚP 9/14", null, null, null],
+      ["STT", "Họ và tên học sinh", "Tên lớp", "Số điện thoại phụ huynh"],
+      [1, "Nguyễn Văn Bình", "9/14", "0912344821"],
+      [2, "Trần Thị Mai", "", 987654321],
+      [null, null, null, null],
+      ["Tổng", "2 học sinh", null, null],
+    ];
+    const list = tableToClassList(table, "Sheet1");
+    expect(list.columns).toEqual({ name: "Họ và tên học sinh", className: "Tên lớp", phone: "Số điện thoại phụ huynh" });
+    expect(list.rows).toEqual([
+      { name: "Nguyễn Văn Bình", className: "9/14", phone: "0912344821" },
+      { name: "Trần Thị Mai", className: "", phone: "987654321" },
+    ]);
+  });
+
+  it("joins split Họ / Tên columns", async () => {
+    const { tableToClassList } = await import("@/lib/excel");
+    const list = tableToClassList([["Họ và tên đệm", "Tên", "Lớp"], ["Lê Hoàng", "Nam", "8A2"]]);
+    expect(list.rows).toEqual([{ name: "Lê Hoàng Nam", className: "8A2", phone: "" }]);
+  });
+});

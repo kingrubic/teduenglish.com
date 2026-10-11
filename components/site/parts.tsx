@@ -100,6 +100,13 @@ export function LoginForm({ ctx }: { ctx: string }) {
   );
 }
 
+/** "8/10", or the essay marking state for writing-only quizzes. */
+export function doneLabel(rec: DoneMap[string]): string {
+  if (rec.review === "done") return rec.total ? `${rec.best}/${rec.total} · Có nhận xét ✓` : "Có nhận xét ✓";
+  if (rec.review === "pending") return rec.total ? `${rec.best}/${rec.total} · Chờ nhận xét` : "Đã nộp · chờ nhận xét";
+  return `${rec.best}/${rec.total}`;
+}
+
 export function QuizButton({ quiz, done }: { quiz: QuizMeta; done: DoneMap }) {
   const rec = done[quiz.id];
   return (
@@ -108,7 +115,7 @@ export function QuizButton({ quiz, done }: { quiz: QuizMeta; done: DoneMap }) {
         {quiz.title}
         {quiz.hasCode && !rec && <span className="lock">· cần mã bài</span>}
       </span>
-      <span className="q-meta">{rec ? `Đã làm · ${rec.best}/${rec.total}` : `${quiz.questionCount} câu →`}</span>
+      <span className="q-meta">{rec ? (rec.review ? doneLabel(rec) : `Đã làm · ${doneLabel(rec)}`) : quiz.hasEssay ? "Bài viết →" : `${quiz.questionCount} câu →`}</span>
     </Link>
   );
 }

@@ -3,22 +3,14 @@
  * No Convex imports here so the browser bundle can use them too.
  */
 
-export type McqQuestion = {
-  type: "mcq";
-  tag?: string;
-  q: string;
-  options: string[];
-  answer: number;
-  explain?: string;
-};
-export type FillQuestion = {
-  type: "fill";
-  tag?: string;
-  q: string;
-  answer: string[];
-  explain?: string;
-};
-export type Question = McqQuestion | FillQuestion;
+/** Picture shown with a question (e.g. an IELTS Task 1 chart), kept in Convex storage. */
+export type QuestionImage = { storageId: string; name: string };
+type QuestionBase = { tag?: string; q: string; explain?: string; image?: QuestionImage };
+export type McqQuestion = QuestionBase & { type: "mcq"; options: string[]; answer: number };
+export type FillQuestion = QuestionBase & { type: "fill"; answer: string[] };
+/** Free writing marked by a teacher; `explain` is a tip shown with the prompt. */
+export type EssayQuestion = QuestionBase & { type: "essay"; minWords?: number };
+export type Question = McqQuestion | FillQuestion | EssayQuestion;
 export type Section = {
   title: string;
   listen?: string;
@@ -101,11 +93,21 @@ export function questionCount(sections: { questions: unknown[] }[]): number {
   return sections.reduce((n, s) => n + s.questions.length, 0);
 }
 
+export const MAX_ESSAY_CHARS = 20_000;
+
+export function wordCount(text: unknown): number {
+  return String(text ?? "")
+    .split(/\s+/)
+    .filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+}
+
 export function isAnswered(q: Question, v: AnswerValue | undefined): boolean {
+  if (q.type === "essay") return wordCount(v) > 0;
   return q.type === "fill" ? normAnswer(v) !== "" : typeof v === "number";
 }
 
 export function isCorrect(q: Question, v: AnswerValue | undefined): boolean {
+  if (q.type === "essay") return false;
   if (q.type === "fill") {
     const a = normAnswer(v);
     return a !== "" && q.answer.some((x) => normAnswer(x) === a);
@@ -126,6 +128,7 @@ export function grade(sections: Section[], answers: Answers): GradeResult {
   let unanswered = 0;
   sections.forEach((sec, si) => {
     sec.questions.forEach((q, qi) => {
+      if (q.type === "essay") return; // marked by the teacher, not auto-graded
       const v = answers[`${si}-${qi}`];
       total++;
       if (!isAnswered(q, v)) unanswered++;
@@ -149,6 +152,30 @@ export function bandFor(kind: IeltsKind | undefined | null, correct: number, tot
   return 0;
 }
 
+export function hasEssay(sections: { questions: { type: string }[] }[]): boolean {
+  return sections.some((s) => s.questions.some((q) => q.type === "essay"));
+}
+
+export const WRITING_CRITERIA = ["Task Achievement / Response", "Coherence & Cohesion", "Lexical Resource", "Grammatical Range & Accuracy"];
+
+/** IELTS rounding of the four criteria: .25 rounds up to .5, .75 rounds up to the next band. */
+export function writingBand(criteria: number[]): number | null {
+  if (criteria.length !== 4 || criteria.some((c) => !Number.isFinite(c) || c < 0 || c > 9)) return null;
+  const avg = criteria.reduce((a, b) => a + b, 0) / 4;
+  const base = Math.floor(avg);
+  const frac = avg - base;
+  return frac < 0.25 ? base : frac < 0.75 ? base + 0.5 : base + 1;
+}
+
+/** Code from the last two words of the name + last 4 phone digits: "Trần Bảo An", 0912 344 821 → "baoan4821". */
+export function phoneCode(name: string, phone: unknown): string | null {
+  const digits = String(phone ?? "").replace(/\D/g, "");
+  if (digits.length < 4) return null;
+  const words = noMarks(name).toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+  const base = words.slice(-2).join("").slice(0, 20);
+  return base ? base + digits.slice(-4) : null;
+}
+
 /** Returns a list of problems with a quiz definition; empty when valid. */
 export function validateSections(sections: Section[]): string[] {
   const errors: string[] = [];
@@ -165,6 +192,9 @@ export function validateSections(sections: Section[]): string[] {
         if (opts.length !== q.options.length) errors.push(`Câu ${num}: có lựa chọn đang để trống.`);
         if (!Number.isInteger(q.answer) || q.answer < 0 || q.answer >= q.options.length)
           errors.push(`Câu ${num}: chưa chọn đáp án đúng.`);
+      } else if (q.type === "essay") {
+        if (q.minWords != null && (!Number.isInteger(q.minWords) || q.minWords < 0 || q.minWords > 2000))
+          errors.push(`Câu ${num}: số từ tối thiểu phải từ 0 đến 2000.`);
       } else if (!q.answer.some((a) => normAnswer(a))) {
         errors.push(`Câu ${num}: cần ít nhất một đáp án được chấp nhận.`);
       }

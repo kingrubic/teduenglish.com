@@ -7,7 +7,7 @@ const scriptSrc = isDev
   : "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com";
 const csp = [
   "default-src 'self'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://*.convex.cloud",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   scriptSrc,
   "font-src 'self' data: https://fonts.gstatic.com",

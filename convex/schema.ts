@@ -1,23 +1,27 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+export const imageValidator = v.object({ storageId: v.id("_storage"), name: v.string() });
+
+const questionBase = {
+  tag: v.optional(v.string()),
+  q: v.string(),
+  explain: v.optional(v.string()),
+  image: v.optional(imageValidator),
+};
+
 export const questionValidator = v.union(
-  v.object({
-    type: v.literal("mcq"),
-    tag: v.optional(v.string()),
-    q: v.string(),
-    options: v.array(v.string()),
-    answer: v.number(),
-    explain: v.optional(v.string()),
-  }),
-  v.object({
-    type: v.literal("fill"),
-    tag: v.optional(v.string()),
-    q: v.string(),
-    answer: v.array(v.string()),
-    explain: v.optional(v.string()),
-  }),
+  v.object({ type: v.literal("mcq"), ...questionBase, options: v.array(v.string()), answer: v.number() }),
+  v.object({ type: v.literal("fill"), ...questionBase, answer: v.array(v.string()) }),
+  // Free writing (e.g. IELTS Writing), marked by a teacher.
+  v.object({ type: v.literal("essay"), ...questionBase, minWords: v.optional(v.number()) }),
 );
+
+export const essayReviewValidator = v.object({
+  comment: v.string(),
+  band: v.optional(v.number()),
+  criteria: v.optional(v.array(v.number())),
+});
 
 export const sectionValidator = v.object({
   title: v.string(),
@@ -86,6 +90,7 @@ export default defineSchema({
     description: v.string(),
     url: v.string(), // "" when the resource is an uploaded file
     file: v.optional(v.object({ storageId: v.id("_storage"), name: v.string(), size: v.number() })),
+    hidden: v.optional(v.boolean()),
     order: v.number(),
   }).index("by_folder", ["folder"]),
 
@@ -121,10 +126,16 @@ export default defineSchema({
     band: v.optional(v.number()),
     answers: v.record(v.string(), v.union(v.string(), v.number())),
     submittedAt: v.number(),
+    // Only for attempts that contain essays.
+    reviewStatus: v.optional(v.union(v.literal("pending"), v.literal("done"))),
+    essayReviews: v.optional(v.record(v.string(), essayReviewValidator)),
+    reviewedAt: v.optional(v.number()),
+    reviewedBy: v.optional(v.string()),
   })
     .index("by_student", ["studentId", "submittedAt"])
     .index("by_quiz", ["quizId", "submittedAt"])
-    .index("by_submittedAt", ["submittedAt"]),
+    .index("by_submittedAt", ["submittedAt"])
+    .index("by_reviewStatus", ["reviewStatus", "submittedAt"]),
 
   admins: defineTable({
     email: v.string(),
@@ -145,6 +156,16 @@ export default defineSchema({
     .index("by_tokenHash", ["tokenHash"])
     .index("by_admin", ["adminId"])
     .index("by_expiresAt", ["expiresAt"]),
+
+  // Answers from the teacher on /need-clarify (one row per question).
+  clarifyAnswers: defineTable({
+    qid: v.string(),
+    choices: v.array(v.string()),
+    text: v.string(),
+    files: v.array(v.object({ storageId: v.id("_storage"), name: v.string(), size: v.number() })),
+    by: v.string(),
+    updatedAt: v.number(),
+  }).index("by_qid", ["qid"]),
 
   loginAttempts: defineTable({
     kind: v.union(v.literal("student"), v.literal("admin")),

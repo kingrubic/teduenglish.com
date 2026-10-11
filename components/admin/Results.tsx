@@ -1,12 +1,14 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Rich, stamp } from "@/lib/ui";
-import { downloadCsv } from "./csv";
+import { WRITING_CRITERIA, writingBand } from "@/convex/model";
+import { downloadXlsx } from "@/lib/excel";
+import { Rich, errMsg, stamp } from "@/lib/ui";
 import { Modal, useAdmin, useRun } from "./AdminShell";
 
 export default function Results() {
@@ -17,8 +19,9 @@ export default function Results() {
   const params = useSearchParams();
   const quizId = (params.get("quiz") || undefined) as Id<"quizzes"> | undefined;
   const studentId = (params.get("student") || undefined) as Id<"students"> | undefined;
+  const pendingOnly = params.get("cho") === "1";
 
-  const rows = useQuery(api.admin.attempts, { token, quizId, studentId });
+  const rows = useQuery(api.admin.attempts, { token, quizId, studentId, pendingOnly });
   const quizzes = useQuery(api.admin.quizzes, { token });
   const students = useQuery(api.admin.students, { token });
   const del = useMutation(api.admin.deleteAttempt);
@@ -45,13 +48,24 @@ export default function Results() {
     }
     list = list.filter((r) => best.get(`${r.studentId}|${r.quizId}`) === r);
   }
-  const avg = list.length ? Math.round((list.reduce((s, r) => s + r.correct / (r.total || 1), 0) / list.length) * 100) : null;
+  const scored = list.filter((r) => r.total > 0);
+  const avg = scored.length ? Math.round((scored.reduce((s, r) => s + r.correct / r.total, 0) / scored.length) * 100) : null;
 
-  function exportCsv() {
-    downloadCsv(
-      "ket-qua-tedu.csv",
-      ["Thời gian", "Học sinh", "Lớp", "Bài", "Đúng", "Tổng", "Phần trăm", "Band"],
-      list.map((r) => [stamp(r.submittedAt), r.studentName, r.className, r.quizTitle, r.correct, r.total, r.total ? Math.round((r.correct / r.total) * 100) : 0, r.band != null ? r.band.toFixed(1) : ""]),
+  function exportXlsx() {
+    downloadXlsx(
+      "ket-qua-tedu.xlsx",
+      ["Thời gian", "Học sinh", "Lớp", "Bài", "Đúng", "Tổng", "Phần trăm", "Band", "Bài viết"],
+      list.map((r) => [
+        stamp(r.submittedAt),
+        r.studentName,
+        r.className,
+        r.quizTitle,
+        r.total ? r.correct : "",
+        r.total || "",
+        r.total ? Math.round((r.correct / r.total) * 100) : "",
+        r.band != null ? r.band.toFixed(1) : "",
+        r.reviewStatus === "pending" ? "Chờ nhận xét" : r.reviewStatus === "done" ? "Đã nhận xét" : "",
+      ]),
     );
   }
 
@@ -64,8 +78,8 @@ export default function Results() {
           <p className="small muted">Mỗi lần học sinh nộp bài là một dòng. Bấm vào dòng để xem em đã trả lời từng câu thế nào.</p>
         </div>
         <div className="actions">
-          <button className="btn btn-ghost btn-sm" type="button" onClick={exportCsv} disabled={!list.length}>
-            Tải CSV
+          <button className="btn btn-ghost btn-sm" type="button" onClick={exportXlsx} disabled={!list.length}>
+            Tải Excel
           </button>
         </div>
       </div>
@@ -101,6 +115,10 @@ export default function Results() {
             <input type="checkbox" checked={bestOnly} onChange={(e) => setBestOnly(e.target.checked)} />
             Chỉ lần cao nhất
           </label>
+          <label className="switch">
+            <input type="checkbox" checked={pendingOnly} onChange={(e) => setParam("cho", e.target.checked ? "1" : "")} />
+            ✍️ Chỉ bài viết chờ nhận xét
+          </label>
         </div>
         <span className="count-chip">
           {list.length} lượt{avg != null ? ` · TB ${avg}%` : ""}
@@ -135,22 +153,32 @@ export default function Results() {
                     </td>
                     <td>{r.quizTitle}</td>
                     <td className="num">
-                      <b>
-                        {r.correct}/{r.total}
-                      </b>
+                      {r.total > 0 ? (
+                        <b>
+                          {r.correct}/{r.total}
+                        </b>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
                       {r.band != null && <span className="sub">Band {r.band.toFixed(1)}</span>}
-                      {r.unanswered > 0 && <span className="sub">{r.unanswered} câu bỏ trống</span>}
+                      {r.total > 0 && r.unanswered > 0 && <span className="sub">{r.unanswered} câu bỏ trống</span>}
+                      {r.reviewStatus === "pending" && <span className="status draft">✍️ Chờ nhận xét</span>}
+                      {r.reviewStatus === "done" && <span className="status on">✍️ Đã nhận xét</span>}
                     </td>
                     <td style={{ minWidth: 110 }}>
-                      <div className="bar" title={`${pct}%`}>
-                        <i style={{ width: `${pct}%` }} />
-                      </div>
-                      <span className="sub">{pct}%</span>
+                      {r.total > 0 && (
+                        <>
+                          <div className="bar" title={`${pct}%`}>
+                            <i style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="sub">{pct}%</span>
+                        </>
+                      )}
                     </td>
                     <td>
                       <div className="row-actions">
                         <button className="link-btn" type="button" onClick={() => setDetail(r.id)}>
-                          Chi tiết
+                          {r.reviewStatus === "pending" ? "Chấm bài viết" : "Chi tiết"}
                         </button>
                         <button
                           className="link-btn danger"
@@ -185,40 +213,199 @@ function AttemptDetail({ id, onClose }: { id: Id<"attempts">; onClose: () => voi
       ) : (
         <>
           <p className="small muted">
-            {a.className} · nộp lúc {stamp(a.submittedAt)} · <b>{a.correct}/{a.total}</b> đúng
+            {a.className} · nộp lúc {stamp(a.submittedAt)}
+            {a.total > 0 && (
+              <>
+                {" "}
+                ·{" "}
+                <b>
+                  {a.correct}/{a.total}
+                </b>{" "}
+                đúng
+              </>
+            )}
             {a.band != null ? ` · Band ${a.band.toFixed(1)}` : ""}
           </p>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Câu</th>
-                  <th>Câu hỏi</th>
-                  <th>Em trả lời</th>
-                  <th>Đáp án</th>
-                </tr>
-              </thead>
-              <tbody>
-                {a.questions.map((q) => (
-                  <tr key={q.num}>
-                    <td>
-                      {q.num} {q.ok ? <span className="status on">Đúng</span> : <span className="status off">{q.given ? "Sai" : "Bỏ trống"}</span>}
-                    </td>
-                    <td>
-                      <Rich text={q.q} />
-                      <span className="sub">{q.section}</span>
-                    </td>
-                    <td>{q.given ? <Rich text={q.given} /> : <span className="muted">—</span>}</td>
-                    <td>
-                      <Rich text={q.right} />
-                    </td>
+          {a.essays.length > 0 && <EssayReview key={a.id + (a.reviewedAt ?? "")} attempt={a} onDone={onClose} />}
+          {a.questions.length > 0 && (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Câu</th>
+                    <th>Câu hỏi</th>
+                    <th>Em trả lời</th>
+                    <th>Đáp án</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {a.questions.map((q) => (
+                    <tr key={q.num}>
+                      <td>
+                        {q.num} {q.ok ? <span className="status on">Đúng</span> : <span className="status off">{q.given ? "Sai" : "Bỏ trống"}</span>}
+                      </td>
+                      <td>
+                        <Rich text={q.q} />
+                        <span className="sub">{q.section}</span>
+                      </td>
+                      <td>{q.given ? <Rich text={q.given} /> : <span className="muted">—</span>}</td>
+                      <td>
+                        <Rich text={q.right} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </Modal>
+  );
+}
+
+type Detail = NonNullable<FunctionReturnType<typeof api.admin.attemptDetail>>;
+type ReviewDraft = { comment: string; band: string; useCriteria: boolean; criteria: string[] };
+const BAND_STEPS = Array.from({ length: 19 }, (_, i) => (i / 2).toFixed(1));
+
+/** Teacher marking for the essays in an attempt: a comment, plus an optional band or the four IELTS criteria. */
+function EssayReview({ attempt, onDone }: { attempt: Detail; onDone: () => void }) {
+  const { token, toast } = useAdmin();
+  const save = useMutation(api.admin.reviewAttempt);
+  const [drafts, setDrafts] = useState<Record<string, ReviewDraft>>(() =>
+    Object.fromEntries(
+      attempt.essays.map((e) => [
+        e.key,
+        {
+          comment: e.review?.comment ?? "",
+          band: e.review?.band != null && !e.review.criteria ? e.review.band.toFixed(1) : "",
+          useCriteria: !!e.review?.criteria,
+          criteria: e.review?.criteria?.map((c) => c.toFixed(1)) ?? ["", "", "", ""],
+        },
+      ]),
+    ),
+  );
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const set = (key: string, patch: Partial<ReviewDraft>) => setDrafts((d) => ({ ...d, [key]: { ...d[key], ...patch } }));
+
+  async function submit() {
+    const reviews: Record<string, { comment: string; band?: number; criteria?: number[] }> = {};
+    for (const e of attempt.essays) {
+      const d = drafts[e.key];
+      if (d.useCriteria) {
+        if (d.criteria.some((c) => c === "")) return setErr(`Câu ${e.num}: chấm đủ 4 tiêu chí hoặc tắt chấm theo tiêu chí.`);
+        reviews[e.key] = { comment: d.comment, criteria: d.criteria.map(Number) };
+      } else reviews[e.key] = { comment: d.comment, ...(d.band ? { band: Number(d.band) } : {}) };
+    }
+    setBusy(true);
+    try {
+      await save({ token, id: attempt.id, reviews });
+      toast("Đã lưu nhận xét. Học sinh thấy ngay ở trang bài làm.");
+      onDone();
+    } catch (e) {
+      setErr(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="stack">
+      {attempt.reviewedAt && (
+        <p className="alert alert-good">
+          Đã nhận xét lúc {stamp(attempt.reviewedAt)}
+          {attempt.reviewedBy ? ` bởi ${attempt.reviewedBy}` : ""}. Thầy cô có thể sửa rồi lưu lại.
+        </p>
+      )}
+      {attempt.essays.map((e) => {
+        const d = drafts[e.key];
+        const overall = d.useCriteria && d.criteria.every((c) => c !== "") ? writingBand(d.criteria.map(Number)) : null;
+        return (
+          <section key={e.key} className="essay-review">
+            <p className="eyebrow">
+              Câu {e.num} · {e.section}
+            </p>
+            <div className="essay-prompt small">
+              <Rich text={e.q} />
+            </div>
+            {e.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="q-image" src={e.imageUrl} alt="" style={{ maxHeight: 220 }} />
+            )}
+            <div className="mw-text">{e.text || "(Học sinh để trống)"}</div>
+            <p className={`tiny ${e.minWords && e.words < e.minWords ? "state-low" : "muted"}`}>
+              {e.words} từ{e.minWords ? ` · yêu cầu tối thiểu ${e.minWords}` : ""}
+            </p>
+            <div className="field">
+              <label htmlFor={`rv-${e.key}`}>Nhận xét cho học sinh</label>
+              <textarea
+                className="textarea prose"
+                id={`rv-${e.key}`}
+                rows={5}
+                value={d.comment}
+                onChange={(ev) => set(e.key, { comment: ev.target.value })}
+                placeholder="Điểm mạnh, lỗi cần sửa, gợi ý nâng band…"
+              />
+            </div>
+            <label className="switch">
+              <input type="checkbox" checked={d.useCriteria} onChange={(ev) => set(e.key, { useCriteria: ev.target.checked })} />
+              Chấm theo 4 tiêu chí IELTS Writing
+            </label>
+            {d.useCriteria ? (
+              <div className="criteria-grid">
+                {WRITING_CRITERIA.map((c, i) => (
+                  <label key={c} className="field">
+                    <span className="tiny" style={{ fontWeight: 700 }}>
+                      {c}
+                    </span>
+                    <select
+                      className="select compact"
+                      value={d.criteria[i]}
+                      onChange={(ev) => set(e.key, { criteria: d.criteria.map((x, j) => (j === i ? ev.target.value : x)) })}
+                    >
+                      <option value="">—</option>
+                      {BAND_STEPS.map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+                <div className="field">
+                  <span className="tiny" style={{ fontWeight: 700 }}>
+                    Band tổng
+                  </span>
+                  <b className="overall-band">{overall != null ? overall.toFixed(1) : "—"}</b>
+                </div>
+              </div>
+            ) : (
+              <div className="field" style={{ maxWidth: 220 }}>
+                <label htmlFor={`bd-${e.key}`}>
+                  Band / điểm <span className="hint">(không bắt buộc)</span>
+                </label>
+                <select className="select compact" id={`bd-${e.key}`} value={d.band} onChange={(ev) => set(e.key, { band: ev.target.value })}>
+                  <option value="">Không chấm band</option>
+                  {BAND_STEPS.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </section>
+        );
+      })}
+      <p className="alert alert-bad" role="alert" hidden={!err}>
+        {err}
+      </p>
+      <div className="modal-foot">
+        <button className="btn btn-primary" type="button" onClick={submit} disabled={busy}>
+          {busy ? "Đang lưu…" : attempt.reviewedAt ? "Cập nhật nhận xét" : "Lưu nhận xét & trả bài"}
+        </button>
+      </div>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
-import type { Section } from "./model";
+import type { Doc } from "./_generated/dataModel";
 import { fail, hashPassword } from "./lib";
 import { seedData } from "./seedData";
 
@@ -34,7 +34,7 @@ export const content = internalMutation({
       await ctx.db.insert("quizzes", {
         ...q,
         ielts: "ielts" in q ? (q.ielts as "listening" | "reading") : undefined,
-        sections: q.sections as Section[],
+        sections: q.sections as Doc<"quizzes">["sections"],
         updatedAt: now,
       });
     return {

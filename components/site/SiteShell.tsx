@@ -16,6 +16,8 @@ export type Settings = HomeData["settings"];
 type SiteCtx = {
   /** null until we've read localStorage (first client render). */
   token: string | null | undefined;
+  /** Signed-in teacher on this device, for previewing quizzes without a student code. */
+  adminToken: string | null;
   home: HomeData | undefined;
   settings: Settings;
   teacher: string;
@@ -49,12 +51,14 @@ export default function SiteShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [token, setToken] = useState<string | null | undefined>(undefined);
+  const [adminToken, setAdminToken] = useState<string | null>(null);
   const home = useQuery(api.site.home, token === undefined ? "skip" : { token: token ?? undefined });
   const logoutMut = useMutation(api.site.logout);
 
   useEffect(() => {
     // Reading browser storage has to wait until after hydration.
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAdminToken(sget<string | null>("localStorage", "tedu.admin", null));
     setToken(sget<string | null>("localStorage", TOKEN_KEY, null));
   }, []);
 
@@ -129,6 +133,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider
       value={{
+        adminToken,
         token,
         home,
         settings,

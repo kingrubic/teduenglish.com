@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Answers } from "@/convex/model";
-import { normAnswer, parseDialogue } from "@/convex/model";
+import { normAnswer, parseDialogue, wordCount } from "@/convex/model";
 import { Rich, copyText, errMsg, sdel, sget, shuffle, signalReady, sset, stamp } from "@/lib/ui";
 import { GateLogin, GateNoAccess, Loading, Missing, Swoosh } from "./parts";
 import { useSite } from "./SiteShell";
@@ -27,8 +27,8 @@ type Attempt = {
 };
 
 export default function QuizView({ id }: { id: string }) {
-  const { token } = useSite();
-  const data = useQuery(api.site.quiz, token === undefined ? "skip" : { token: token ?? undefined, id });
+  const { token, adminToken, teacher } = useSite();
+  const data = useQuery(api.site.quiz, token === undefined ? "skip" : { token: token ?? undefined, adminToken: adminToken ?? undefined, id });
 
   useEffect(() => {
     if (data !== undefined) signalReady();
@@ -55,14 +55,21 @@ export default function QuizView({ id }: { id: string }) {
         <div className="banner-meta">
           <span>{m.questionCount} câu</span>
           {m.minutes > 0 && <span>Khoảng {m.minutes} phút</span>}
-          <span>Chấm tự động</span>
+          {m.hasEssay ? <span>Có bài viết · {teacher} nhận xét</span> : <span>Chấm tự động</span>}
           {m.ielts && <span>Band tham khảo</span>}
         </div>
       </section>
       {data.status === "login" && <GateLogin title="Đăng nhập để làm bài" note="Nhập mã cá nhân trước, sau đó em sẽ vào thẳng bài này." />}
       {data.status === "noaccess" && <GateNoAccess name={m.folderName} />}
       {data.status === "locked" && <UnlockGate meta={m} />}
-      {data.status === "ok" && <QuizRunner key={m.id} meta={m} sections={data.sections} />}
+      {data.status === "ok" && data.preview && (
+        <p className="alert alert-good" style={{ marginTop: 18 }}>
+          <b>Chế độ xem trước của giáo viên.</b> Thầy cô làm thử và nộp bình thường để xem chấm điểm, nhưng kết quả không được lưu.
+          {!m.published && " Bài này đang là bản nháp, học sinh chưa thấy."}
+        </p>
+      )}
+      {data.status === "ok" && !data.preview && m.hasEssay && <MyWriting id={m.id} />}
+      {data.status === "ok" && <QuizRunner key={m.id} meta={m} sections={data.sections} preview={data.preview} />}
     </>
   );
 }
@@ -120,7 +127,7 @@ function newAttempt(sections: PubSection[], mix: boolean): Attempt {
     answers: {},
     submitted: false,
     sections: sections.map((sec, si) => {
-      const keep = !mix || !!(sec.listen || sec.passage);
+      const keep = !mix || !!(sec.listen || sec.passage) || sec.questions.some((q) => q.type === "essay");
       const order = sec.questions.map((_, i) => i);
       const opts: Record<number, number[]> = {};
       sec.questions.forEach((q, qi) => {
@@ -149,18 +156,20 @@ function answeredCount(sections: PubSection[], answers: Answers) {
   sections.forEach((sec, si) =>
     sec.questions.forEach((q, qi) => {
       const v = answers[`${si}-${qi}`];
-      if (q.type === "fill" ? normAnswer(v) !== "" : typeof v === "number") n++;
+      if (q.type === "essay" ? wordCount(v) > 0 : q.type === "fill" ? normAnswer(v) !== "" : typeof v === "number") n++;
     }),
   );
   return n;
 }
 
-function QuizRunner({ meta, sections: liveSections }: { meta: Meta; sections: PubSection[] }) {
-  const { token, teacher, home, toast } = useSite();
+function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sections: PubSection[]; preview: boolean }) {
+  const { token, adminToken, teacher, home, toast } = useSite();
   const submitMut = useMutation(api.site.submit);
   // Freeze the questions for this sitting, even if a teacher edits the quiz meanwhile.
   const [sections] = useState(liveSections);
-  const draftKey = `tedu.draft.${meta.id}`;
+  // Long essays must survive a closed tab, so drafts live in localStorage, per student.
+  const who = preview ? "preview" : `${home?.student?.name ?? ""}|${home?.student?.className ?? ""}`;
+  const draftKey = `tedu.draft.${who}.${meta.id}`;
   const [att, setAtt] = useState<Attempt>(() => newAttempt(sections, false));
   const [busy, setBusy] = useState(false);
   const [showCopy, setShowCopy] = useState<string | null>(null);
@@ -169,13 +178,13 @@ function QuizRunner({ meta, sections: liveSections }: { meta: Meta; sections: Pu
 
   // Restore an unfinished attempt after a reload (same tab).
   useEffect(() => {
-    const d = sget<Attempt | null>("sessionStorage", draftKey, null);
+    const d = sget<Attempt | null>("localStorage", draftKey, null);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (draftFits(d, sections)) setAtt(d);
   }, [draftKey, sections]);
 
   useEffect(() => {
-    if (!att.submitted && Object.keys(att.answers).length) sset("sessionStorage", draftKey, att);
+    if (!att.submitted && Object.keys(att.answers).length) sset("localStorage", draftKey, att);
   }, [att, draftKey]);
 
   const total = meta.questionCount;
@@ -250,14 +259,22 @@ function QuizRunner({ meta, sections: liveSections }: { meta: Meta; sections: Pu
 
   /* ---------- submit / retry ---------- */
   async function submit() {
-    if (!token || busy) return;
+    if (busy || (!token && !preview)) return;
+    const short = sections.flatMap((sec, si) =>
+      sec.questions.flatMap((q, qi) => {
+        if (q.type !== "essay" || !q.minWords) return [];
+        const n = wordCount(att.answers[`${si}-${qi}`]);
+        return n < q.minWords ? [`${n}/${q.minWords} từ`] : [];
+      }),
+    );
+    if (short.length && !window.confirm(`Bài viết chưa đủ số từ tối thiểu (${short.join(", ")}). Em vẫn muốn nộp?`)) return;
     ttsStop();
     setTts((t) => ({ ...t, playing: false, paused: false }));
     setBusy(true);
     try {
-      const outcome = await submitMut({ token, id: meta.id, answers: att.answers });
+      const outcome = await submitMut({ token: token ?? undefined, adminToken: preview ? adminToken ?? undefined : undefined, id: meta.id, answers: att.answers });
       setAtt((a) => ({ ...a, submitted: true, outcome }));
-      sdel("sessionStorage", draftKey);
+      sdel("localStorage", draftKey);
     } catch (e) {
       toast(errMsg(e, "Chưa nộp được bài. Em thử lại nhé."));
     } finally {
@@ -279,7 +296,17 @@ function QuizRunner({ meta, sections: liveSections }: { meta: Meta; sections: Pu
     ttsStop();
     setTts({ sec: null, playing: false, paused: false, msg: "" });
     setShowCopy(null);
-    setAtt(newAttempt(sections, true));
+    // Keep the essays so the student can revise and resubmit them.
+    setAtt((prev) => {
+      const next = newAttempt(sections, true);
+      sections.forEach((sec, si) =>
+        sec.questions.forEach((q, qi) => {
+          const v = prev.answers[`${si}-${qi}`];
+          if (q.type === "essay" && typeof v === "string") next.answers[`${si}-${qi}`] = v;
+        }),
+      );
+      return next;
+    });
     rootRef.current?.scrollIntoView({ block: "start" });
   }
 
@@ -293,9 +320,12 @@ function QuizRunner({ meta, sections: liveSections }: { meta: Meta; sections: Pu
       "TEDU English · Kết quả bài làm",
       `Học sinh: ${st.name} (${st.className})`,
       `Bài: ${meta.folderName} · ${meta.title}`,
-      `Điểm: ${r.correct}/${r.total} (${pct}%)${r.band != null ? ` · Band tham khảo ${r.band.toFixed(1)}` : ""}`,
+      r.total ? `Điểm: ${r.correct}/${r.total} (${pct}%)${r.band != null ? ` · Band tham khảo ${r.band.toFixed(1)}` : ""}` : "",
+      o.essayPending ? `Bài viết: đã nộp, chờ ${teacher} nhận xét` : "",
       `Thời gian: ${stamp(o.submittedAt)}`,
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
     copyText(text, () => toast(`Đã sao chép. Em dán vào nhóm Zalo lớp để gửi ${teacher} nhé.`), () => setShowCopy(text));
   }
 
@@ -304,7 +334,7 @@ function QuizRunner({ meta, sections: liveSections }: { meta: Meta; sections: Pu
   return (
     <div className="quiz-wrap" ref={rootRef}>
       {att.submitted && att.outcome && (
-        <ResultBlock outcome={att.outcome} ielts={!!meta.ielts} teacher={teacher} resultRef={resultRef} onRetry={retry} onCopy={copyResult} copyFallback={showCopy} />
+        <ResultBlock outcome={att.outcome} ielts={!!meta.ielts} teacher={teacher} preview={preview} resultRef={resultRef} onRetry={retry} onCopy={copyResult} copyFallback={showCopy} />
       )}
       {att.sections.map((sa) => {
         const sec = sections[sa.si];
@@ -488,8 +518,55 @@ function QuestionCard({
 }) {
   const done = !!review;
   const ok = !!review?.ok;
-  const state = done ? (ok ? " ok" : " no") : "";
+  const image = q.image?.url ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img className="q-image" src={q.image.url} alt={q.image.name} loading="lazy" />
+  ) : null;
 
+  if (q.type === "essay") {
+    const text = typeof value === "string" ? value : "";
+    const words = wordCount(text);
+    const enough = !q.minWords || words >= q.minWords;
+    return (
+      <article className="q-card essay-card" id={`q-${k}`}>
+        <div className="q-head">
+          <span>Câu {num}</span>
+          {q.tag && <span>{q.tag}</span>}
+          <span>Bài viết</span>
+          {done && <span className="state-ok">{review!.answered ? "Đã nộp" : "Chưa viết"}</span>}
+        </div>
+        <div className="essay-prompt">
+          <Rich text={q.q} />
+        </div>
+        {image}
+        {q.tip && (
+          <p className="essay-tip">
+            <b>Gợi ý:</b> <Rich text={q.tip} />
+          </p>
+        )}
+        <textarea
+          className="textarea essay-input"
+          id={`ans-${k}`}
+          value={text}
+          onChange={(e) => onAnswer(k, e.target.value)}
+          placeholder="Write your response here…"
+          rows={12}
+          spellCheck={false}
+          aria-label={`Bài viết câu ${num}`}
+          disabled={done}
+        />
+        <div className="essay-meta">
+          <span className={`wc${q.minWords ? (enough ? " ok" : " low") : ""}`}>
+            {words} từ{q.minWords ? ` / tối thiểu ${q.minWords}` : ""}
+            {q.minWords && enough ? " ✓" : ""}
+          </span>
+          <span className="muted">{done ? "Bài viết đã gửi cho giáo viên nhận xét." : "Bài được lưu nháp tự động trên máy này."}</span>
+        </div>
+      </article>
+    );
+  }
+
+  const state = done ? (ok ? " ok" : " no") : "";
   let body: React.ReactNode;
   if (q.type === "fill") {
     body = (
@@ -560,6 +637,7 @@ function QuestionCard({
       <p className="q-text">
         <Rich text={q.q} />
       </p>
+      {image}
       {body}
       {explain}
     </article>
@@ -570,6 +648,7 @@ function ResultBlock({
   outcome,
   ielts,
   teacher,
+  preview,
   resultRef,
   onRetry,
   onCopy,
@@ -578,6 +657,7 @@ function ResultBlock({
   outcome: Submitted;
   ielts: boolean;
   teacher: string;
+  preview: boolean;
   resultRef: React.RefObject<HTMLElement | null>;
   onRetry: () => void;
   onCopy: () => void;
@@ -588,7 +668,11 @@ function ResultBlock({
   const band = ielts ? r.band : null;
   let head: string;
   let msg: string;
-  if (pct >= 85) {
+  const writingOnly = r.total === 0;
+  if (writingOnly) {
+    head = "Đã nộp bài viết!";
+    msg = preview ? "Chế độ xem trước: bài viết không được gửi đi." : `Bài đã đến tay ${teacher}. Nhận xét sẽ hiện ở đầu trang bài này khi ${teacher} chấm xong.`;
+  } else if (pct >= 85) {
     head = "Excellent work!";
     msg = "Em làm rất tốt. Giữ vững phong độ nhé!";
   } else if (pct >= 60) {
@@ -600,18 +684,25 @@ function ResultBlock({
   }
   return (
     <section className="result" id="result" tabIndex={-1} ref={resultRef}>
-      <div className="score-dial" style={{ "--p": pct } as React.CSSProperties}>
+      <div className="score-dial" style={{ "--p": writingOnly ? 100 : pct } as React.CSSProperties}>
         <div className="inner">
-          <b>
-            {r.correct}/{r.total}
-          </b>
-          <small>{pct}%</small>
+          {writingOnly ? (
+            <b style={{ fontSize: "2.6rem" }}>✓</b>
+          ) : (
+            <>
+              <b>
+                {r.correct}/{r.total}
+              </b>
+              <small>{pct}%</small>
+            </>
+          )}
         </div>
       </div>
       <div>
         <p className="eyebrow">Kết quả</p>
         <h2>{head}</h2>
         <p className="r-msg">{msg}</p>
+        {!writingOnly && (
         <div className="result-stats">
           <span className="stat">
             Đúng <b>{r.correct}</b>
@@ -628,9 +719,10 @@ function ResultBlock({
             </span>
           )}
         </div>
+        )}
         <div className="result-actions">
           <button className="btn btn-primary btn-sm" type="button" onClick={onRetry}>
-            Làm lại (xáo trộn câu hỏi)
+            {writingOnly ? "Sửa và nộp lại" : "Làm lại (xáo trộn câu hỏi)"}
           </button>
           <button className="btn btn-ghost btn-sm" type="button" onClick={onCopy}>
             Sao chép kết quả gửi {teacher}
@@ -640,7 +732,11 @@ function ResultBlock({
           </Link>
         </div>
         <p className="tiny muted" style={{ marginTop: 10 }}>
-          Kết quả đã được lưu, {teacher} xem được điểm của em trong khu vực giáo viên.
+          {preview
+            ? "Chế độ xem trước của giáo viên: kết quả không được lưu."
+            : outcome.essayPending && !writingOnly
+              ? `Điểm phần trắc nghiệm đã được lưu; phần bài viết đang chờ ${teacher} nhận xét.`
+              : `Kết quả đã được lưu, ${teacher} xem được điểm của em trong khu vực giáo viên.`}
         </p>
         {copyFallback && (
           <div className="copy-fallback">
@@ -656,6 +752,51 @@ function ResultBlock({
           </p>
         )}
       </div>
+    </section>
+  );
+}
+
+/** Writing the student already handed in for this quiz, with the teacher's comments. */
+function MyWriting({ id }: { id: string }) {
+  const { token, teacher } = useSite();
+  const rows = useQuery(api.site.writing, token ? { token, id } : "skip");
+  if (!rows?.length) return null;
+  return (
+    <section className="panel my-writing" style={{ marginTop: 18 }}>
+      <div>
+        <p className="eyebrow">Bài viết đã nộp</p>
+        <h2>Nhận xét của {teacher}</h2>
+      </div>
+      {rows.map((a, i) => (
+        <details key={a.id} open={i === 0} className="mw-item">
+          <summary>
+            <span>Lần nộp {stamp(a.submittedAt)}</span>
+            {a.status === "done" ? <span className="status on">Đã nhận xét</span> : <span className="status draft">Chờ nhận xét</span>}
+          </summary>
+          {a.essays.map((e) => (
+            <div key={e.key} className="mw-essay">
+              <p className="tiny muted">
+                <Rich text={e.prompt.split("\n")[0]} /> · {e.words} từ
+              </p>
+              <div className="mw-text">{e.text || "(bỏ trống)"}</div>
+              {a.status === "done" && (e.comment || e.band != null) ? (
+                <div className="mw-review">
+                  {e.band != null && (
+                    <p className="mw-band">
+                      Band <b>{e.band.toFixed(1)}</b>
+                      {e.criteria && <span className="tiny muted"> · TA {e.criteria[0]} · CC {e.criteria[1]} · LR {e.criteria[2]} · GRA {e.criteria[3]}</span>}
+                    </p>
+                  )}
+                  {e.comment && <p className="mw-comment">{e.comment}</p>}
+                  {a.reviewedBy && <p className="tiny muted">— {a.reviewedBy}</p>}
+                </div>
+              ) : a.status === "done" ? null : (
+                <p className="tiny muted">Bài đang chờ {teacher} chấm. Em quay lại trang này sau nhé.</p>
+              )}
+            </div>
+          ))}
+        </details>
+      ))}
     </section>
   );
 }

@@ -8,6 +8,8 @@ import {
   fail,
   folderBySlug,
   getSettings,
+  previewAdmin,
+  publicSections,
   quizBySlug,
   quizMeta,
   randomToken,
@@ -16,7 +18,7 @@ import {
   studentFromToken,
   studentResource,
 } from "./lib";
-import { bandFor, grade, isAnswered, isCorrect, normCode, type Answers } from "./model";
+import { MAX_ESSAY_CHARS, bandFor, grade, hasEssay, isAnswered, isCorrect, normCode, wordCount, type Answers } from "./model";
 
 const token = v.optional(v.string());
 
@@ -51,7 +53,7 @@ export const home = query({
       .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title))
       .map(quizMeta);
     const resources = (await ctx.db.query("resources").collect())
-      .filter((r) => open.includes(r.folder))
+      .filter((r) => open.includes(r.folder) && !r.hidden)
       .sort((a, b) => a.order - b.order);
 
     return {
@@ -77,6 +79,7 @@ export const folder = query({
       .filter((q) => q.published)
       .sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
     const resources = (await ctx.db.query("resources").withIndex("by_folder", (q) => q.eq("folder", f.slug)).collect())
+      .filter((r) => !r.hidden)
       .sort((a, b) => a.order - b.order);
     const info = { id: f.slug, badge: f.badge, name: f.name, detail: f.detail, quizCount: quizzes.length, resourceCount: resources.length };
     if (!student) return { folder: info, status: "login" as const };
@@ -97,7 +100,7 @@ export const document = query({
   handler: async (ctx, args) => {
     const id = ctx.db.normalizeId("resources", args.id);
     const r = id ? await ctx.db.get(id) : null;
-    if (!r?.file) return null;
+    if (!r?.file || r.hidden) return null;
     const student = await studentFromToken(ctx, args.token);
     if (!student || !canOpen(student, r.folder)) return null;
     const folder = await folderBySlug(ctx, r.folder);
@@ -105,15 +108,22 @@ export const document = query({
   },
 });
 
-/** Quiz for taking: never includes answers or explanations. */
+/**
+ * Quiz for taking: never includes answers or explanations.
+ * A signed-in teacher without a student session gets a preview (drafts and coded quizzes included).
+ */
 export const quiz = query({
-  args: { token, id: v.string() },
+  args: { token, adminToken: v.optional(v.string()), id: v.string() },
   handler: async (ctx, args) => {
     const quiz = await quizBySlug(ctx, args.id);
-    if (!quiz || !quiz.published) return null;
+    if (!quiz) return null;
     const f = await folderBySlug(ctx, quiz.folder);
-    const meta = { ...quizMeta(quiz), folderName: f?.name ?? "" };
+    const meta = { ...quizMeta(quiz), folderName: f?.name ?? "", published: quiz.published };
     const student = await studentFromToken(ctx, args.token);
+    if (!student || !canOpen(student, quiz.folder) || !quiz.published) {
+      if (await previewAdmin(ctx, args.adminToken)) return { meta, status: "ok" as const, preview: true, sections: await publicSections(ctx, quiz) };
+    }
+    if (!quiz.published) return null;
     if (!student) return { meta, status: "login" as const };
     if (!canOpen(student, quiz.folder)) return { meta, status: "noaccess" as const };
     if (quiz.code) {
@@ -123,20 +133,35 @@ export const quiz = query({
         .first();
       if (!unlocked) return { meta, status: "locked" as const };
     }
-    return {
-      meta,
-      status: "ok" as const,
-      sections: quiz.sections.map((s) => ({
-        title: s.title,
-        listen: s.listen ?? null,
-        passage: s.passage ?? null,
-        questions: s.questions.map((q) =>
-          q.type === "mcq"
-            ? { type: "mcq" as const, tag: q.tag ?? "", q: q.q, options: q.options }
-            : { type: "fill" as const, tag: q.tag ?? "", q: q.q },
-        ),
-      })),
-    };
+    return { meta, status: "ok" as const, preview: false, sections: await publicSections(ctx, quiz) };
+  },
+});
+
+/** The student's own writing for a quiz, with the teacher's comments once marked. */
+export const writing = query({
+  args: { token, id: v.string() },
+  handler: async (ctx, args) => {
+    const student = await studentFromToken(ctx, args.token);
+    const quiz = await quizBySlug(ctx, args.id);
+    if (!student || !quiz || !hasEssay(quiz.sections)) return [];
+    const attempts = (await ctx.db.query("attempts").withIndex("by_student", (q) => q.eq("studentId", student._id)).order("desc").collect())
+      .filter((a) => a.quizId === quiz._id && a.reviewStatus)
+      .slice(0, 10);
+    return attempts.map((a) => ({
+      id: a._id,
+      submittedAt: a.submittedAt,
+      status: a.reviewStatus!,
+      reviewedBy: a.reviewedBy ?? null,
+      essays: quiz.sections.flatMap((sec, si) =>
+        sec.questions.flatMap((q, qi) => {
+          if (q.type !== "essay") return [];
+          const key = `${si}-${qi}`;
+          const text = String(a.answers[key] ?? "");
+          const review = a.essayReviews?.[key];
+          return [{ key, prompt: q.q, text, words: wordCount(text), minWords: q.minWords ?? 0, comment: review?.comment ?? "", band: review?.band ?? null, criteria: review?.criteria ?? null }];
+        }),
+      ),
+    }));
   },
 });
 
@@ -213,19 +238,23 @@ export const unlock = mutation({
 
 export const submit = mutation({
   args: {
-    token: v.string(),
+    token: v.optional(v.string()),
+    adminToken: v.optional(v.string()),
     id: v.string(),
     answers: v.record(v.string(), v.union(v.string(), v.number())),
   },
   handler: async (ctx, args) => {
-    const student = await studentFromToken(ctx, args.token);
-    if (!student) fail("Phiên đăng nhập đã hết hạn, em đăng nhập lại để nộp bài.");
     const quiz = await quizBySlug(ctx, args.id);
-    if (!quiz || !quiz.published || !canOpen(student, quiz.folder)) fail("Không tìm thấy bài này.");
-    if (quiz.code) {
+    if (!quiz) fail("Không tìm thấy bài này.");
+    const student = await studentFromToken(ctx, args.token);
+    const studentMayTake = !!student && quiz.published && canOpen(student, quiz.folder);
+    // Teacher preview: graded the same way, but nothing is saved.
+    const preview = !studentMayTake && !!(await previewAdmin(ctx, args.adminToken));
+    if (!studentMayTake && !preview) fail(student ? "Không tìm thấy bài này." : "Phiên đăng nhập đã hết hạn, em đăng nhập lại để nộp bài.");
+    if (!preview && quiz.code) {
       const unlocked = await ctx.db
         .query("quizUnlocks")
-        .withIndex("by_student_quiz", (q) => q.eq("studentId", student._id).eq("quizId", quiz._id))
+        .withIndex("by_student_quiz", (q) => q.eq("studentId", student!._id).eq("quizId", quiz._id))
         .first();
       if (!unlocked) fail("Bài này cần mã bài trước khi nộp.");
     }
@@ -238,34 +267,40 @@ export const submit = mutation({
         const val = args.answers[key];
         if (q.type === "mcq" && typeof val === "number") answers[key] = val;
         if (q.type === "fill" && typeof val === "string") answers[key] = val.slice(0, 300);
+        if (q.type === "essay" && typeof val === "string" && val.trim()) answers[key] = val.slice(0, MAX_ESSAY_CHARS);
       }),
     );
+    const wroteEssay = quiz.sections.some((sec, si) => sec.questions.some((q, qi) => q.type === "essay" && wordCount(answers[`${si}-${qi}`]) > 0));
 
     const result = grade(quiz.sections, answers);
     const band = bandFor(quiz.ielts, result.correct, result.total);
     const now = Date.now();
-    await ctx.db.insert("attempts", {
-      studentId: student._id,
-      quizId: quiz._id,
-      ...result,
-      band: band ?? undefined,
-      answers,
-      submittedAt: now,
-    });
-    await ctx.db.patch(student._id, { lastSeenAt: now });
+    if (!preview) {
+      await ctx.db.insert("attempts", {
+        studentId: student!._id,
+        quizId: quiz._id,
+        ...result,
+        band: band ?? undefined,
+        answers,
+        submittedAt: now,
+        ...(wroteEssay ? { reviewStatus: "pending" as const } : {}),
+      });
+      await ctx.db.patch(student!._id, { lastSeenAt: now });
+    }
 
-    const review: Record<string, { ok: boolean; answered: boolean; answer: number | string; explain: string }> = {};
+    const review: Record<string, { ok: boolean; answered: boolean; answer: number | string; explain: string; essay: boolean }> = {};
     quiz.sections.forEach((sec, si) =>
       sec.questions.forEach((q, qi) => {
         const key = `${si}-${qi}`;
         review[key] = {
           ok: isCorrect(q, answers[key]),
           answered: isAnswered(q, answers[key]),
-          answer: q.type === "mcq" ? q.answer : q.answer[0] ?? "",
-          explain: q.explain ?? "",
+          answer: q.type === "mcq" ? q.answer : q.type === "fill" ? q.answer[0] ?? "" : "",
+          explain: q.type === "essay" ? "" : q.explain ?? "",
+          essay: q.type === "essay",
         };
       }),
     );
-    return { result: { ...result, band }, review, submittedAt: now };
+    return { result: { ...result, band }, review, submittedAt: now, preview, essayPending: wroteEssay && !preview };
   },
 });

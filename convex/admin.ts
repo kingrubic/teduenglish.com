@@ -12,14 +12,16 @@ import {
   getSettings,
   hashPassword,
   quizBySlug,
+  quizImageIds,
+  releaseImages,
   randomToken,
   requireAdmin,
   sha256,
   studentByCode,
   verifyPassword,
 } from "./lib";
-import { ieltsValidator, resourceKindValidator, sectionValidator } from "./schema";
-import { MAX_PDF_BYTES, formatBytes, isCorrect, normCode, questionCount, slugify, validateSections } from "./model";
+import { essayReviewValidator, ieltsValidator, resourceKindValidator, sectionValidator } from "./schema";
+import { MAX_PDF_BYTES, formatBytes, hasEssay, isCorrect, normCode, questionCount, slugify, validateSections, wordCount, writingBand } from "./model";
 
 const tokenArg = { token: v.string() };
 
@@ -105,6 +107,7 @@ export const overview = query({
     const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const recent = await ctx.db.query("attempts").withIndex("by_submittedAt", (q) => q.gt("submittedAt", weekAgo)).order("desc").collect();
     const latest = recent.slice(0, 12);
+    const pending = await ctx.db.query("attempts").withIndex("by_reviewStatus", (q) => q.eq("reviewStatus", "pending")).collect();
     return {
       counts: {
         students: students.filter((s) => s.active).length,
@@ -115,6 +118,7 @@ export const overview = query({
         resources: resources.length,
         attemptsWeek: recent.length,
         activeStudentsWeek: new Set(recent.map((a) => a.studentId)).size,
+        pendingReviews: pending.length,
       },
       latest: await Promise.all(latest.map((a) => attemptRow(ctx, a))),
     };
@@ -138,6 +142,7 @@ async function attemptRow(ctx: { db: QueryCtx["db"] }, a: Doc<"attempts">) {
     unanswered: a.unanswered,
     band: a.band ?? null,
     submittedAt: a.submittedAt,
+    reviewStatus: a.reviewStatus ?? null,
   };
 }
 
@@ -341,7 +346,8 @@ export const saveStudent = mutation({
 export const bulkCreateStudents = mutation({
   args: {
     token: v.string(),
-    rows: v.array(v.object({ name: v.string(), className: v.string() })),
+    // `code` is optional: when given (e.g. name + phone digits) it must be free.
+    rows: v.array(v.object({ name: v.string(), className: v.string(), code: v.optional(v.string()) })),
     folders: v.array(v.string()),
   },
   handler: async (ctx, args) => {
@@ -349,15 +355,30 @@ export const bulkCreateStudents = mutation({
     if (args.rows.length > 300) fail("Mỗi lần thêm tối đa 300 học sinh.");
     const folders = await assertFolders(ctx, args.folders);
     const created: { name: string; className: string; code: string }[] = [];
+    const skipped: { name: string; className: string; reason: string }[] = [];
     for (const r of args.rows) {
       const name = r.name.trim().replace(/\s+/g, " ");
       const className = r.className.trim();
-      if (!name || !className) continue;
-      const code = await generateStudentCode(ctx, name);
+      if (!name || !className) {
+        skipped.push({ name, className, reason: "Thiếu tên hoặc lớp" });
+        continue;
+      }
+      let code = normCode(r.code);
+      if (code) {
+        if (!/^[a-z0-9._-]{4,40}$/.test(code)) {
+          skipped.push({ name, className, reason: `Mã "${code}" không hợp lệ` });
+          continue;
+        }
+        const other = await studentByCode(ctx, code);
+        if (other) {
+          skipped.push({ name, className, reason: `Mã "${code}" đã dùng cho ${other.name}` });
+          continue;
+        }
+      } else code = await generateStudentCode(ctx, name);
       await ctx.db.insert("students", { name, className, code, folders, active: true, note: "", createdAt: Date.now() });
       created.push({ name, className, code });
     }
-    return created;
+    return { created, skipped };
   },
 });
 
@@ -449,6 +470,7 @@ export const saveResource = mutation({
     // A freshly uploaded file; omit to keep the current one.
     storageId: v.optional(v.id("_storage")),
     fileName: v.optional(v.string()),
+    hidden: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.token);
@@ -476,7 +498,7 @@ export const saveResource = mutation({
       fail("Chọn file PDF để tải lên.");
     }
 
-    const data = { folder: args.folder, kind: args.kind, title, description: args.description.trim(), url, ...(file ? { file } : {}) };
+    const data = { folder: args.folder, kind: args.kind, title, description: args.description.trim(), url, ...(file ? { file } : {}), ...(args.hidden ? { hidden: true } : {}) };
     if (prev) {
       if (prev.file && prev.file.storageId !== file?.storageId) await ctx.storage.delete(prev.file.storageId);
       await ctx.db.replace(prev._id, { ...data, order: prev.order });
@@ -484,6 +506,14 @@ export const saveResource = mutation({
     }
     const inFolder = await ctx.db.query("resources").withIndex("by_folder", (q) => q.eq("folder", args.folder)).collect();
     return ctx.db.insert("resources", { ...data, order: inFolder.reduce((m, r) => Math.max(m, r.order), 0) + 1 });
+  },
+});
+
+export const setResourceHidden = mutation({
+  args: { token: v.string(), id: v.id("resources"), hidden: v.boolean() },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx, args.token);
+    await ctx.db.patch(args.id, { hidden: args.hidden || undefined });
   },
 });
 
@@ -536,6 +566,8 @@ export const quizzes = query({
           ielts: q.ielts ?? null,
           published: q.published,
           questionCount: questionCount(q.sections),
+          hasEssay: hasEssay(q.sections),
+          pendingCount: mine.filter((a) => a.reviewStatus === "pending").length,
           attemptCount: mine.length,
           avgPct: mine.length ? Math.round((mine.reduce((s, a) => s + a.correct / (a.total || 1), 0) / mine.length) * 100) : null,
           updatedAt: q.updatedAt,
@@ -548,7 +580,14 @@ export const quiz = query({
   args: { token: v.string(), id: v.id("quizzes") },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.token);
-    return ctx.db.get(args.id);
+    const q = await ctx.db.get(args.id);
+    if (!q) return null;
+    const imageUrls: Record<string, string> = {};
+    for (const id of quizImageIds(q.sections)) {
+      const url = await ctx.storage.getUrl(id);
+      if (url) imageUrls[id] = url;
+    }
+    return { ...q, imageUrls };
   },
 });
 
@@ -577,14 +616,23 @@ export const saveQuiz = mutation({
       ...(s.listen?.trim() ? { listen: s.listen.trim() } : {}),
       ...(s.passage?.trim() ? { passage: s.passage.trim() } : {}),
       questions: s.questions.map((q) => {
-        const base = { q: q.q.trim(), ...(q.tag?.trim() ? { tag: q.tag.trim() } : {}), ...(q.explain?.trim() ? { explain: q.explain.trim() } : {}) };
-        return q.type === "mcq"
-          ? { type: "mcq" as const, ...base, options: q.options.map((o) => o.trim()), answer: q.answer }
-          : { type: "fill" as const, ...base, answer: q.answer.map((a) => a.trim()).filter(Boolean) };
+        const base = {
+          q: q.q.trim(),
+          ...(q.tag?.trim() ? { tag: q.tag.trim() } : {}),
+          ...(q.explain?.trim() ? { explain: q.explain.trim() } : {}),
+          ...(q.image ? { image: q.image } : {}),
+        };
+        if (q.type === "mcq") return { type: "mcq" as const, ...base, options: q.options.map((o) => o.trim()), answer: q.answer };
+        if (q.type === "fill") return { type: "fill" as const, ...base, answer: q.answer.map((a) => a.trim()).filter(Boolean) };
+        return { type: "essay" as const, ...base, ...(q.minWords ? { minWords: Math.round(q.minWords) } : {}) };
       }),
     }));
     const errors = validateSections(sections);
     if (errors.length) fail(errors.slice(0, 5).join("\n"));
+    for (const id of quizImageIds(sections)) {
+      const meta = await ctx.db.system.get(id);
+      if (!meta || !(meta.contentType ?? "").startsWith("image/")) fail("Có ảnh trong bài không hợp lệ hoặc đã bị xoá. Hãy chọn lại ảnh.");
+    }
 
     const slug = slugify(args.slug || title);
     if (!slug) fail("Mã bài (đường link) chỉ gồm chữ không dấu, số và dấu gạch ngang.");
@@ -608,6 +656,8 @@ export const saveQuiz = mutation({
       const prev = await ctx.db.get(id);
       if (!prev) fail("Không tìm thấy bài.");
       await ctx.db.replace(id, { ...data, order: prev.order });
+      const kept = new Set<string>(quizImageIds(sections));
+      await releaseImages(ctx, quizImageIds(prev.sections).filter((x) => !kept.has(x)), id);
       return { id, slug };
     }
     const inFolder = await ctx.db.query("quizzes").withIndex("by_folder", (q) => q.eq("folder", args.folder)).collect();
@@ -638,7 +688,10 @@ export const deleteQuiz = mutation({
     for (const a of await ctx.db.query("attempts").withIndex("by_quiz", (q) => q.eq("quizId", args.id)).collect())
       await ctx.db.delete(a._id);
     for (const u of await ctx.db.query("quizUnlocks").collect()) if (u.quizId === args.id) await ctx.db.delete(u._id);
+    const quiz = await ctx.db.get(args.id);
+    if (!quiz) return;
     await ctx.db.delete(args.id);
+    await releaseImages(ctx, quizImageIds(quiz.sections), args.id);
   },
 });
 
@@ -649,6 +702,7 @@ export const attempts = query({
     token: v.string(),
     quizId: v.optional(v.id("quizzes")),
     studentId: v.optional(v.id("students")),
+    pendingOnly: v.optional(v.boolean()),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -662,9 +716,12 @@ export const attempts = query({
     } else if (args.quizId) {
       const qid = args.quizId;
       rows = await ctx.db.query("attempts").withIndex("by_quiz", (q) => q.eq("quizId", qid)).order("desc").take(limit);
+    } else if (args.pendingOnly) {
+      rows = await ctx.db.query("attempts").withIndex("by_reviewStatus", (q) => q.eq("reviewStatus", "pending")).order("desc").take(limit);
     } else {
       rows = await ctx.db.query("attempts").withIndex("by_submittedAt").order("desc").take(limit);
     }
+    if (args.pendingOnly) rows = rows.filter((r) => r.reviewStatus === "pending");
     return Promise.all(rows.map((a) => attemptRow(ctx, a)));
   },
 });
@@ -677,19 +734,71 @@ export const attemptDetail = query({
     if (!a) return null;
     const quiz = await ctx.db.get(a.quizId);
     const row = await attemptRow(ctx, a);
-    if (!quiz) return { ...row, questions: [] };
+    const meta = { reviewedAt: a.reviewedAt ?? null, reviewedBy: a.reviewedBy ?? null };
+    if (!quiz) return { ...row, ...meta, questions: [], essays: [] };
     const questions: { num: number; section: string; q: string; given: string; right: string; ok: boolean }[] = [];
+    const essays: {
+      num: number;
+      key: string;
+      section: string;
+      q: string;
+      text: string;
+      words: number;
+      minWords: number;
+      imageUrl: string | null;
+      review: { comment: string; band: number | null; criteria: number[] | null } | null;
+    }[] = [];
     let num = 0;
-    quiz.sections.forEach((sec, si) =>
-      sec.questions.forEach((q, qi) => {
+    for (const [si, sec] of quiz.sections.entries())
+      for (const [qi, q] of sec.questions.entries()) {
         num++;
-        const val = a.answers[`${si}-${qi}`];
+        const key = `${si}-${qi}`;
+        const val = a.answers[key];
+        if (q.type === "essay") {
+          const r = a.essayReviews?.[key];
+          essays.push({
+            num,
+            key,
+            section: sec.title,
+            q: q.q,
+            text: String(val ?? ""),
+            words: wordCount(val),
+            minWords: q.minWords ?? 0,
+            imageUrl: q.image ? await ctx.storage.getUrl(q.image.storageId) : null,
+            review: r ? { comment: r.comment, band: r.band ?? null, criteria: r.criteria ?? null } : null,
+          });
+          continue;
+        }
         const given = q.type === "mcq" ? (typeof val === "number" ? q.options[val] ?? "" : "") : String(val ?? "");
         const right = q.type === "mcq" ? q.options[q.answer] ?? "" : q.answer.join(" / ");
         questions.push({ num, section: sec.title, q: q.q, given, right, ok: isCorrect(q, val) });
-      }),
-    );
-    return { ...row, questions };
+      }
+    return { ...row, ...meta, questions, essays };
+  },
+});
+
+/** Saves the teacher's comments (and optional IELTS bands) on an attempt's essays. */
+export const reviewAttempt = mutation({
+  args: { token: v.string(), id: v.id("attempts"), reviews: v.record(v.string(), essayReviewValidator) },
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx, args.token);
+    const a = await ctx.db.get(args.id);
+    if (!a || !a.reviewStatus) fail("Không tìm thấy bài viết.");
+    const essayReviews: Record<string, { comment: string; band?: number; criteria?: number[] }> = {};
+    for (const [key, r] of Object.entries(args.reviews)) {
+      const comment = r.comment.trim().slice(0, 5000);
+      let band = r.band;
+      let criteria = r.criteria;
+      if (criteria) {
+        if (criteria.length !== 4 || criteria.some((c) => c < 0 || c > 9 || (c * 2) % 1 !== 0)) fail("Mỗi tiêu chí chấm từ 0 đến 9, bước 0.5.");
+        band = writingBand(criteria) ?? undefined;
+      } else criteria = undefined;
+      if (band != null && (band < 0 || band > 9 || (band * 2) % 1 !== 0)) fail("Band từ 0 đến 9, bước 0.5.");
+      if (!comment && band == null) continue;
+      essayReviews[key] = { comment, ...(band != null ? { band } : {}), ...(criteria ? { criteria } : {}) };
+    }
+    if (!Object.keys(essayReviews).length) fail("Viết nhận xét hoặc chấm band trước khi lưu.");
+    await ctx.db.patch(a._id, { essayReviews, reviewStatus: "done", reviewedAt: Date.now(), reviewedBy: admin.name });
   },
 });
 

@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { firstName, noMarks, normCode, questionCount } from "./model";
+import { firstName, hasEssay, noMarks, normCode, questionCount } from "./model";
 
 export const STUDENT_SESSION_MS = 180 * 24 * 60 * 60 * 1000;
 export const ADMIN_SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -153,10 +153,56 @@ export function quizMeta(quiz: Doc<"quizzes">) {
     featured: quiz.featured,
     ielts: quiz.ielts ?? null,
     questionCount: questionCount(quiz.sections),
+    hasEssay: hasEssay(quiz.sections),
   };
 }
 
-export type DoneRecord = { best: number; last: number; total: number; at: number; count: number };
+/** Quiz content for taking it: no answers; essay tips are fine to show up front. */
+export async function publicSections(ctx: Ctx, quiz: Doc<"quizzes">) {
+  return Promise.all(
+    quiz.sections.map(async (s) => ({
+      title: s.title,
+      listen: s.listen ?? null,
+      passage: s.passage ?? null,
+      questions: await Promise.all(
+        s.questions.map(async (q) => {
+          const image = q.image ? { name: q.image.name, url: await ctx.storage.getUrl(q.image.storageId) } : null;
+          if (q.type === "mcq") return { type: "mcq" as const, tag: q.tag ?? "", q: q.q, image, options: q.options };
+          if (q.type === "fill") return { type: "fill" as const, tag: q.tag ?? "", q: q.q, image };
+          return { type: "essay" as const, tag: q.tag ?? "", q: q.q, image, minWords: q.minWords ?? 0, tip: q.explain ?? "" };
+        }),
+      ),
+    })),
+  );
+}
+
+export function quizImageIds(sections: Doc<"quizzes">["sections"]): Id<"_storage">[] {
+  return sections.flatMap((s) => s.questions.flatMap((q) => (q.image ? [q.image.storageId] : [])));
+}
+
+/** Deletes question images no other quiz still uses (duplicated quizzes share images). */
+export async function releaseImages(ctx: MutationCtx, ids: Id<"_storage">[], exceptQuiz: Id<"quizzes">) {
+  if (!ids.length) return;
+  const inUse = new Set<string>();
+  for (const q of await ctx.db.query("quizzes").collect()) if (q._id !== exceptQuiz) quizImageIds(q.sections).forEach((id) => inUse.add(id));
+  for (const id of new Set(ids)) if (!inUse.has(id)) await ctx.storage.delete(id);
+}
+
+/** A signed-in teacher previewing the student site (no student session needed). */
+export async function previewAdmin(ctx: Ctx, adminToken: string | undefined | null) {
+  const admin = await adminFromToken(ctx, adminToken);
+  return admin && !admin.mustChangePassword ? admin : null;
+}
+
+export type DoneRecord = {
+  best: number;
+  last: number;
+  total: number;
+  at: number;
+  count: number;
+  /** Essay marking state of the latest attempt with writing, if any. */
+  review: "pending" | "done" | null;
+};
 
 export async function doneMapFor(ctx: Ctx, studentId: Id<"students">) {
   const attempts = await ctx.db
@@ -177,6 +223,7 @@ export async function doneMapFor(ctx: Ctx, studentId: Id<"students">) {
       total: a.total,
       at: a.submittedAt,
       count: (prev?.count ?? 0) + 1,
+      review: a.reviewStatus ?? prev?.review ?? null,
     };
   }
   return map;

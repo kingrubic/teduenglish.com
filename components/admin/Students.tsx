@@ -6,9 +6,9 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { noMarks, parseStudentLines } from "@/convex/model";
+import { noMarks, parseStudentLines, phoneCode } from "@/convex/model";
+import { downloadXlsx, readClassList, type ClassList, type ClassListRow } from "@/lib/excel";
 import { copyText, errMsg, stamp } from "@/lib/ui";
-import { downloadCsv } from "./csv";
 import { Modal, useAdmin, useRun } from "./AdminShell";
 
 type Student = FunctionReturnType<typeof api.admin.students>[number];
@@ -56,8 +56,8 @@ export default function Students() {
   }
 
   function exportList() {
-    downloadCsv(
-      `hoc-sinh${cls ? "-" + cls : ""}.csv`,
+    downloadXlsx(
+      `hoc-sinh${cls ? "-" + cls : ""}.xlsx`,
       ["Họ tên", "Lớp", "Mã", "Thư mục", "Trạng thái"],
       list.map((s) => [s.name, s.className, s.code, s.folders.map((f) => (f === "*" ? "Tất cả" : folderName.get(f) ?? f)).join("; "), s.active ? "Đang mở" : "Đã khóa"]),
     );
@@ -65,7 +65,7 @@ export default function Students() {
 
   function copyCodes() {
     const text = list.filter((s) => s.active).map((s) => `${s.name} (${s.className}): ${s.code}`).join("\n");
-    copyText(text, () => toast(`Đã sao chép mã của ${list.filter((s) => s.active).length} học sinh.`), () => toast("Trình duyệt chặn sao chép. Dùng nút Tải CSV."));
+    copyText(text, () => toast(`Đã sao chép mã của ${list.filter((s) => s.active).length} học sinh.`), () => toast("Trình duyệt chặn sao chép. Dùng nút Tải Excel."));
   }
 
   async function bulkFolderAction(add: boolean) {
@@ -121,7 +121,7 @@ export default function Students() {
             Sao chép mã
           </button>
           <button className="btn btn-ghost btn-sm" type="button" onClick={exportList} disabled={!list.length}>
-            Tải CSV
+            Tải Excel
           </button>
         </div>
       </div>
@@ -242,7 +242,7 @@ export default function Students() {
       )}
 
       {editing && folders && <StudentForm student={editing === "new" ? null : editing} folders={folders} classes={classes} onClose={() => setEditing(null)} />}
-      {bulk && folders && <BulkForm folders={folders} classes={classes} onClose={() => setBulk(false)} />}
+      {bulk && folders && students && <BulkForm folders={folders} classes={classes} students={students} onClose={() => setBulk(false)} />}
     </section>
   );
 }
@@ -371,28 +371,81 @@ function StudentForm({ student, folders, classes, onClose }: { student: Student 
   );
 }
 
-/** Paste a class list: one student per line, "Name, Class" or "Name<TAB>Class" (class optional if set below). */
-function BulkForm({ folders, classes, onClose }: { folders: Folder[]; classes: string[]; onClose: () => void }) {
+type CodeMode = "random" | "phone";
+type Preview = ClassListRow & { code: string | null; status: "ok" | "noclass" | "dup" | "exists" | "taken"; note: string };
+
+const STATUS_LABEL: Record<Preview["status"], string> = {
+  ok: "Sẵn sàng",
+  noclass: "Thiếu lớp",
+  dup: "Trùng trong danh sách",
+  exists: "Đã có học sinh này",
+  taken: "Mã đã được dùng",
+};
+
+/** Paste a class list or upload an Excel file; preview every row before creating codes. */
+function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; classes: string[]; students: Student[]; onClose: () => void }) {
   const { token, toast } = useAdmin();
   const create = useMutation(api.admin.bulkCreateStudents);
+  const [source, setSource] = useState<"file" | "paste">("file");
   const [text, setText] = useState("");
+  const [fileList, setFileList] = useState<ClassList | null>(null);
+  const [fileName, setFileName] = useState("");
+  const [reading, setReading] = useState(false);
   const [className, setClassName] = useState("");
+  const [mode, setMode] = useState<CodeMode>("random");
   const [picked, setPicked] = useState<string[]>([]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [created, setCreated] = useState<{ name: string; className: string; code: string }[] | null>(null);
+  const [done, setDone] = useState<{ created: { name: string; className: string; code: string }[]; skipped: { name: string; className: string; reason: string }[] } | null>(null);
 
-  const rows = parseStudentLines(text, className);
-  const missingClass = rows.filter((r) => !r.className).length;
+  const raw: ClassListRow[] =
+    source === "file" ? (fileList?.rows ?? []).map((r) => ({ ...r, className: r.className || className.trim() })) : parseStudentLines(text, className).map((r) => ({ ...r, phone: "" }));
+  const hasPhones = raw.some((r) => r.phone.replace(/\D/g, "").length >= 4);
+
+  // Work out every row's fate before anything is created.
+  const existing = new Set(students.map((s) => `${noMarks(s.name).toLowerCase()}|${s.className.toLowerCase()}`));
+  const usedCodes = new Set(students.map((s) => s.code));
+  const seen = new Set<string>();
+  const preview: Preview[] = raw.map((r) => {
+    const key = `${noMarks(r.name).toLowerCase()}|${r.className.toLowerCase()}`;
+    const code = mode === "phone" ? phoneCode(r.name, r.phone) : null;
+    let status: Preview["status"] = "ok";
+    if (!r.className) status = "noclass";
+    else if (seen.has(key) || (code && seen.has(`code:${code}`))) status = "dup";
+    else if (existing.has(key)) status = "exists";
+    else if (code && usedCodes.has(code)) status = "taken";
+    seen.add(key);
+    if (code) seen.add(`code:${code}`);
+    const note = mode === "phone" && !code ? "Thiếu SĐT → mã ngẫu nhiên" : "";
+    return { ...r, code, status, note };
+  });
+  const ready = preview.filter((p) => p.status === "ok");
+
+  async function onFile(file: File | undefined) {
+    if (!file) return;
+    setErr("");
+    setReading(true);
+    try {
+      const list = await readClassList(file);
+      setFileList(list);
+      setFileName(file.name);
+      if (list.columns.phone) setMode("phone");
+    } catch (e) {
+      setFileList(null);
+      setErr(e instanceof Error ? e.message : "Không đọc được file Excel.");
+    } finally {
+      setReading(false);
+    }
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!rows.length) return setErr("Dán danh sách học sinh, mỗi dòng một em.");
-    if (missingClass) return setErr(`${missingClass} dòng chưa có lớp. Nhập lớp chung ở ô bên trên hoặc ghi "Tên, Lớp".`);
+    if (!raw.length) return setErr(source === "file" ? "Chọn file Excel danh sách lớp." : "Dán danh sách học sinh, mỗi dòng một em.");
+    if (!ready.length) return setErr("Không còn dòng nào hợp lệ để tạo mã. Xem cột Trạng thái bên dưới.");
     if (!picked.length) return setErr("Chọn ít nhất một thư mục.");
     setBusy(true);
     try {
-      setCreated(await create({ token, rows, folders: picked }));
+      setDone(await create({ token, rows: ready.map((p) => ({ name: p.name, className: p.className, ...(p.code ? { code: p.code } : {}) })), folders: picked }));
     } catch (e2) {
       setErr(errMsg(e2));
     } finally {
@@ -400,26 +453,28 @@ function BulkForm({ folders, classes, onClose }: { folders: Folder[]; classes: s
     }
   }
 
-  if (created) {
-    const out = created.map((s) => `${s.name} (${s.className}): ${s.code}`).join("\n");
+  if (done) {
+    const out = done.created.map((s) => `${s.name} (${s.className}): ${s.code}`).join("\n");
     return (
-      <Modal title={`Đã tạo ${created.length} học sinh`} onClose={onClose} wide>
-        <textarea className="textarea" readOnly value={out} rows={Math.min(14, created.length + 1)} onFocus={(e) => e.currentTarget.select()} />
+      <Modal title={`Đã tạo ${done.created.length} học sinh`} onClose={onClose} wide>
+        {done.created.length > 0 && <textarea className="textarea" readOnly value={out} rows={Math.min(12, done.created.length + 1)} onFocus={(e) => e.currentTarget.select()} />}
+        {done.skipped.length > 0 && (
+          <div className="alert alert-bad">
+            Bỏ qua {done.skipped.length} dòng:
+            {"\n"}
+            {done.skipped.map((s) => `• ${s.name || "(trống)"} (${s.className || "?"}): ${s.reason}`).join("\n")}
+          </div>
+        )}
         <div className="modal-foot">
           <button
             className="btn btn-ghost"
             type="button"
-            onClick={() =>
-              downloadCsv(
-                "ma-hoc-sinh-moi.csv",
-                ["Họ tên", "Lớp", "Mã"],
-                created.map((s) => [s.name, s.className, s.code]),
-              )
-            }
+            disabled={!done.created.length}
+            onClick={() => downloadXlsx("ma-hoc-sinh-moi.xlsx", ["Họ tên", "Lớp", "Mã cá nhân"], done.created.map((s) => [s.name, s.className, s.code]))}
           >
-            Tải CSV
+            Tải file Excel
           </button>
-          <button className="btn btn-ghost" type="button" onClick={() => copyText(out, () => toast("Đã sao chép danh sách mã."), () => {})}>
+          <button className="btn btn-ghost" type="button" disabled={!done.created.length} onClick={() => copyText(out, () => toast("Đã sao chép danh sách mã."), () => {})}>
             Sao chép
           </button>
           <button className="btn btn-primary" type="button" onClick={onClose}>
@@ -433,36 +488,108 @@ function BulkForm({ folders, classes, onClose }: { folders: Folder[]; classes: s
   return (
     <Modal title="Thêm nhiều học sinh" onClose={onClose} wide>
       <form className="stack" onSubmit={onSubmit} noValidate>
-        <div className="field">
-          <label htmlFor="b-list">
-            Danh sách <span className="hint">— mỗi dòng một em: “Họ tên” hoặc “Họ tên, Lớp” (dán thẳng từ Excel cũng được)</span>
+        <div className="checks" role="radiogroup" aria-label="Nguồn danh sách">
+          <label className="check">
+            <input type="radio" name="bulk-src" checked={source === "file"} onChange={() => setSource("file")} />
+            Tải file Excel (.xlsx)
           </label>
-          <textarea className="textarea prose" id="b-list" rows={8} value={text} onChange={(e) => setText(e.target.value)} placeholder={"Nguyễn Văn Bình, 8A2\nTrần Thị Mai, 8A2\nLê Hoàng Nam"} autoFocus />
+          <label className="check">
+            <input type="radio" name="bulk-src" checked={source === "paste"} onChange={() => setSource("paste")} />
+            Dán danh sách
+          </label>
         </div>
-        <div className="field">
-          <label htmlFor="b-class">
-            Lớp chung <span className="hint">(dùng cho dòng không ghi lớp)</span>
-          </label>
-          <input className="input" id="b-class" list="class-list-bulk" value={className} onChange={(e) => setClassName(e.target.value)} placeholder="8A2" />
-          <datalist id="class-list-bulk">
-            {classes.map((c) => (
-              <option key={c} value={c} />
-            ))}
-          </datalist>
+
+        {source === "file" ? (
+          <div className="field">
+            <label htmlFor="b-file">
+              File danh sách lớp <span className="hint">— cần cột “Họ và tên”; nên có “Lớp” và “Số điện thoại”. File chỉ được đọc trên máy này.</span>
+            </label>
+            <input className="input" id="b-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => onFile(e.target.files?.[0])} />
+            {reading && <span className="tiny muted">Đang đọc file…</span>}
+            {fileList && (
+              <span className="tiny muted">
+                {fileName} · trang “{fileList.sheet}” · {fileList.rows.length} học sinh · cột tên: <b>{fileList.columns.name}</b>
+                {fileList.columns.className ? <> · cột lớp: <b>{fileList.columns.className}</b></> : " · không có cột lớp"}
+                {fileList.columns.phone ? <> · cột SĐT: <b>{fileList.columns.phone}</b></> : " · không có cột số điện thoại"}
+              </span>
+            )}
+          </div>
+        ) : (
+          <div className="field">
+            <label htmlFor="b-list">
+              Danh sách <span className="hint">— mỗi dòng một em: “Họ tên” hoặc “Họ tên, Lớp” (copy 2 cột từ Excel cũng được)</span>
+            </label>
+            <textarea className="textarea prose" id="b-list" rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder={"Nguyễn Văn Bình, 8A2\nTrần Thị Mai, 8A2\nLê Hoàng Nam"} autoFocus />
+          </div>
+        )}
+
+        <div className="row-2">
+          <div className="field">
+            <label htmlFor="b-class">
+              Lớp chung <span className="hint">(cho dòng không ghi lớp)</span>
+            </label>
+            <input className="input" id="b-class" list="class-list-bulk" value={className} onChange={(e) => setClassName(e.target.value)} placeholder="8A2" />
+            <datalist id="class-list-bulk">
+              {classes.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </div>
+          <div className="field">
+            <label htmlFor="b-mode">Cách tạo mã</label>
+            <select className="select" id="b-mode" value={mode} onChange={(e) => setMode(e.target.value as CodeMode)}>
+              <option value="random">Tên + 4 số ngẫu nhiên (binh4821)</option>
+              <option value="phone" disabled={!hasPhones}>
+                2 chữ cuối của tên + 4 số cuối SĐT (vanbinh6789){hasPhones ? "" : " — cần cột SĐT"}
+              </option>
+            </select>
+          </div>
         </div>
         <FolderChecks folders={folders} value={picked} onChange={setPicked} />
+
+        {preview.length > 0 && (
+          <div className="table-wrap" style={{ maxHeight: 300, overflowY: "auto" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Họ tên</th>
+                  <th>Lớp</th>
+                  {mode === "phone" && <th>SĐT</th>}
+                  <th>Mã</th>
+                  <th>Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.map((p, i) => (
+                  <tr key={i} className={p.status === "ok" ? "" : "is-off"}>
+                    <td>{i + 1}</td>
+                    <td>{p.name}</td>
+                    <td>{p.className || "—"}</td>
+                    {mode === "phone" && <td className="mono">{p.phone.replace(/\D/g, "").length >= 4 ? `•••${p.phone.replace(/\D/g, "").slice(-4)}` : "—"}</td>}
+                    <td>
+                      {p.code ? <code>{p.code}</code> : <span className="muted tiny">tự tạo</span>}
+                      {p.note && <span className="sub">{p.note}</span>}
+                    </td>
+                    <td>{p.status === "ok" ? <span className="status on">Sẵn sàng</span> : <span className="status off">{STATUS_LABEL[p.status]}</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <p className="alert alert-bad" role="alert" hidden={!err}>
           {err}
         </p>
         <div className="modal-foot">
           <span className="small muted" style={{ marginRight: "auto", alignSelf: "center" }}>
-            {rows.length} học sinh
+            {preview.length ? `${ready.length}/${preview.length} dòng sẵn sàng` : ""}
           </span>
           <button className="btn btn-ghost" type="button" onClick={onClose}>
             Hủy
           </button>
-          <button className="btn btn-primary" type="submit" disabled={busy}>
-            Tạo mã cho {rows.length} em
+          <button className="btn btn-primary" type="submit" disabled={busy || reading}>
+            {busy ? "Đang tạo mã…" : `Tạo mã cho ${ready.length} em`}
           </button>
         </div>
       </form>

@@ -20,6 +20,7 @@ export default function Resources() {
   const folders = useQuery(api.admin.folders, { token });
   const move = useMutation(api.admin.moveResource);
   const del = useMutation(api.admin.deleteResource);
+  const setHidden = useMutation(api.admin.setResourceHidden);
   const [folder, setFolder] = useState("");
   const [editing, setEditing] = useState<Resource | "new" | null>(null);
 
@@ -75,7 +76,7 @@ export default function Resources() {
                 const siblings = ordered.filter((x) => x.folder === r.folder);
                 const idx = siblings.indexOf(r);
                 return (
-                  <tr key={r._id}>
+                  <tr key={r._id} className={r.hidden ? "is-off" : ""}>
                     <td>
                       <div className="row-actions">
                         <button className="link-btn" type="button" disabled={idx === 0} onClick={() => run(() => move({ token, id: r._id, dir: -1 }))} aria-label="Lên">
@@ -105,11 +106,19 @@ export default function Resources() {
                     <td>
                       <span className="tag">{KIND[r.kind]}</span>
                       {r.file && <span className="tag">PDF</span>}
+                      {r.hidden ? <span className="status draft">Đang ẩn</span> : <span className="status on">Đang hiện</span>}
                     </td>
                     <td>
                       <div className="row-actions">
                         <button className="link-btn" type="button" onClick={() => setEditing(r)}>
                           Sửa
+                        </button>
+                        <button
+                          className="link-btn"
+                          type="button"
+                          onClick={() => run(() => setHidden({ token, id: r._id, hidden: !r.hidden }), r.hidden ? "Đã hiện lại cho học sinh." : "Đã ẩn khỏi trang học sinh.")}
+                        >
+                          {r.hidden ? "Hiện" : "Ẩn"}
                         </button>
                         <button
                           className="link-btn danger"
@@ -174,6 +183,7 @@ function ResourceForm({
   const [title, setTitle] = useState(res?.title ?? "");
   const [url, setUrl] = useState(res?.url ?? "");
   const [description, setDescription] = useState(res?.description ?? "");
+  const [hidden, setHiddenField] = useState(!!res?.hidden);
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [err, setErr] = useState("");
@@ -197,7 +207,7 @@ function ResourceForm({
         setProgress(0);
         storageId = await uploadPdf(await getUploadUrl({ token }), file, setProgress);
       }
-      await save({ token, id: res?._id, folder, kind, title, description, source, url, storageId, fileName: file?.name });
+      await save({ token, id: res?._id, folder, kind, title, description, source, url, storageId, fileName: file?.name, hidden });
       toast(res ? "Đã lưu tài liệu." : "Đã thêm tài liệu.");
       onClose();
     } catch (e2) {
@@ -274,6 +284,10 @@ function ResourceForm({
           </label>
           <input className="input" id="r-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="In ra hoặc làm trực tiếp trên giấy" />
         </div>
+        <label className="switch">
+          <input type="checkbox" checked={hidden} onChange={(e) => setHiddenField(e.target.checked)} />
+          Tạm ẩn khỏi trang học sinh (giao sau)
+        </label>
         {progress !== null && (
           <div className="progress-row">
             <span>Đang tải lên {progress}%</span>

@@ -89,10 +89,16 @@ export default function Quizzes() {
                     {x.published ? <span className="status on">Đang hiện</span> : <span className="status draft">Bản nháp</span>}
                     {x.featured && <span className="sub">★ Nổi bật</span>}
                     {x.ielts && <span className="sub">IELTS {x.ielts === "listening" ? "Listening" : "Reading"}</span>}
+                    {x.hasEssay && <span className="sub">✍️ Có bài viết</span>}
                   </td>
                   <td className="num">
                     {x.attemptCount ? <Link href={`/admin/ket-qua?quiz=${x._id}`}>{x.attemptCount}</Link> : 0}
-                    {x.avgPct != null && <span className="sub">TB {x.avgPct}%</span>}
+                    {x.avgPct != null && !x.hasEssay && <span className="sub">TB {x.avgPct}%</span>}
+                    {x.pendingCount > 0 && (
+                      <Link className="sub" href={`/admin/ket-qua?quiz=${x._id}&cho=1`}>
+                        ✍️ {x.pendingCount} chờ nhận xét
+                      </Link>
+                    )}
                   </td>
                   <td>
                     <div className="row-actions">
@@ -100,7 +106,7 @@ export default function Quizzes() {
                         Sửa
                       </Link>
                       <a className="link-btn" href={`/bai/${x.slug}`} target="_blank" rel="noopener noreferrer">
-                        Xem
+                        Xem trước
                       </a>
                       <button className="link-btn" type="button" onClick={() => run(() => dup({ token, id: x._id }), "Đã tạo bản sao (đang là bản nháp).")}>
                         Nhân bản

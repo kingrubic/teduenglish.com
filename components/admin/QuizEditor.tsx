@@ -15,16 +15,20 @@ import { Modal, useAdmin } from "./AdminShell";
 let uidSeq = 0;
 const uid = () => `u${++uidSeq}`;
 
+type EImage = { storageId: Id<"_storage">; name: string; url: string };
 type EQ = {
   uid: string;
-  type: "mcq" | "fill";
+  type: "mcq" | "fill" | "essay";
   tag: string;
   q: string;
   options: string[];
   answer: number;
   answerText: string; // fill: accepted answers, one per line
-  explain: string;
+  explain: string; // essay: tip shown with the prompt
+  minWords: number; // essay only
+  image: EImage | null;
 };
+type QuizSections = Doc<"quizzes">["sections"];
 type ES = { uid: string; title: string; kind: "plain" | "listen" | "passage"; media: string; questions: EQ[] };
 type Draft = {
   slug: string;
@@ -39,38 +43,86 @@ type Draft = {
   sections: ES[];
 };
 
-const blankQ = (type: "mcq" | "fill"): EQ => ({ uid: uid(), type, tag: "", q: "", options: ["", "", "", ""], answer: -1, answerText: "", explain: "" });
+const blankQ = (type: EQ["type"]): EQ => ({ uid: uid(), type, tag: "", q: "", options: ["", "", "", ""], answer: -1, answerText: "", explain: "", minWords: 0, image: null });
+
+/** Starter for an IELTS Academic Writing test: Task 1 (with a chart image) and Task 2. */
+function ieltsWritingTemplate(): ES[] {
+  return [
+    {
+      uid: uid(),
+      title: "Writing Task 1",
+      kind: "plain",
+      media: "",
+      questions: [
+        {
+          ...blankQ("essay"),
+          tag: "Task 1 · 20 minutes",
+          q: "The chart below shows … \n\nSummarise the information by selecting and reporting the main features, and make comparisons where relevant.",
+          minWords: 150,
+          explain: "Overview first, then group the key features; no personal opinion.",
+        },
+      ],
+    },
+    {
+      uid: uid(),
+      title: "Writing Task 2",
+      kind: "plain",
+      media: "",
+      questions: [
+        {
+          ...blankQ("essay"),
+          tag: "Task 2 · 40 minutes",
+          q: "Some people believe that … Others think that …\n\nDiscuss both views and give your own opinion.\n\nGive reasons for your answer and include any relevant examples from your own knowledge or experience.",
+          minWords: 250,
+          explain: "Plan 4–5 paragraphs: introduction, two body paragraphs, conclusion.",
+        },
+      ],
+    },
+  ];
+}
 const blankS = (): ES => ({ uid: uid(), title: "", kind: "plain", media: "", questions: [blankQ("mcq")] });
 
-function fromSections(sections: Section[]): ES[] {
+function fromSections(sections: Section[], imageUrls: Record<string, string> = {}): ES[] {
   return sections.map((s) => ({
     uid: uid(),
     title: s.title,
     kind: s.listen ? "listen" : s.passage ? "passage" : "plain",
     media: s.listen ?? s.passage ?? "",
-    questions: s.questions.map((q) =>
-      q.type === "mcq"
-        ? { uid: uid(), type: "mcq", tag: q.tag ?? "", q: q.q, options: [...q.options], answer: q.answer, answerText: q.options[q.answer] ?? "", explain: q.explain ?? "" }
-        : { uid: uid(), type: "fill", tag: q.tag ?? "", q: q.q, options: ["", "", "", ""], answer: -1, answerText: q.answer.join("\n"), explain: q.explain ?? "" },
-    ),
+    questions: s.questions.map((q): EQ => {
+      const base = {
+        ...blankQ(q.type),
+        tag: q.tag ?? "",
+        q: q.q,
+        explain: q.explain ?? "",
+        image: q.image ? { storageId: q.image.storageId as Id<"_storage">, name: q.image.name, url: imageUrls[q.image.storageId] ?? "" } : null,
+      };
+      if (q.type === "mcq") return { ...base, options: [...q.options], answer: q.answer, answerText: q.options[q.answer] ?? "" };
+      if (q.type === "fill") return { ...base, answerText: q.answer.join("\n") };
+      return { ...base, minWords: q.minWords ?? 0 };
+    }),
   }));
 }
 
-function toSections(es: ES[]): Section[] {
+function toSections(es: ES[]): QuizSections {
   return es.map((s) => ({
     title: s.title,
     ...(s.kind === "listen" ? { listen: s.media } : {}),
     ...(s.kind === "passage" ? { passage: s.media } : {}),
     questions: s.questions.map((q) => {
-      const base = { q: q.q, ...(q.tag.trim() ? { tag: q.tag } : {}), ...(q.explain.trim() ? { explain: q.explain } : {}) };
-      return q.type === "mcq"
-        ? { type: "mcq" as const, ...base, options: q.options, answer: q.answer }
-        : { type: "fill" as const, ...base, answer: q.answerText.split("\n").map((x) => x.trim()).filter(Boolean) };
+      const base = {
+        q: q.q,
+        ...(q.tag.trim() ? { tag: q.tag } : {}),
+        ...(q.explain.trim() ? { explain: q.explain } : {}),
+        ...(q.image ? { image: { storageId: q.image.storageId, name: q.image.name } } : {}),
+      };
+      if (q.type === "mcq") return { type: "mcq" as const, ...base, options: q.options, answer: q.answer };
+      if (q.type === "fill") return { type: "fill" as const, ...base, answer: q.answerText.split("\n").map((x) => x.trim()).filter(Boolean) };
+      return { type: "essay" as const, ...base, ...(q.minWords > 0 ? { minWords: q.minWords } : {}) };
     }),
   }));
 }
 
-function fromDoc(d: Doc<"quizzes">): Draft {
+function fromDoc(d: Doc<"quizzes"> & { imageUrls: Record<string, string> }): Draft {
   return {
     slug: d.slug,
     folder: d.folder,
@@ -81,7 +133,7 @@ function fromDoc(d: Doc<"quizzes">): Draft {
     featured: d.featured,
     ielts: d.ielts ?? "",
     published: d.published,
-    sections: fromSections(d.sections),
+    sections: fromSections(d.sections, d.imageUrls),
   };
 }
 
@@ -186,12 +238,23 @@ export default function QuizEditor({ id }: { id: string }) {
             <h2>{d.title || "Bài chưa đặt tên"}</h2>
           </div>
           <div className="actions">
+            <button
+              className="btn btn-ghost btn-sm"
+              type="button"
+              onClick={() => {
+                const empty = d.sections.every((x) => x.questions.every((q) => !q.q.trim()));
+                if (!empty && !confirm("Thay toàn bộ câu hỏi hiện tại bằng mẫu IELTS Writing Task 1 & 2?")) return;
+                update({ sections: ieltsWritingTemplate(), minutes: 60, ...(d.title.trim() ? {} : { title: "IELTS Writing Practice", subtitle: "Task 1 & Task 2 · Academic" }) });
+              }}
+            >
+              Dùng mẫu IELTS Writing
+            </button>
             <button className="btn btn-ghost btn-sm" type="button" onClick={() => setJsonOpen(true)}>
               Nhập / xuất JSON
             </button>
             {!isNew && (
               <a className="btn btn-ghost btn-sm" href={`/bai/${d.slug}`} target="_blank" rel="noopener noreferrer">
-                Xem như học sinh ↗
+                Xem trước như học sinh ↗
               </a>
             )}
           </div>
@@ -339,6 +402,7 @@ export default function QuizEditor({ id }: { id: string }) {
                   >
                     <option value="mcq">Trắc nghiệm</option>
                     <option value="fill">Điền từ / viết lại câu</option>
+                    <option value="essay">Bài viết (giáo viên chấm)</option>
                   </select>
                   <button className="link-btn" type="button" disabled={qi === 0} onClick={() => setSection(si, { questions: move(s.questions, qi, -1) })} aria-label="Lên">
                     ↑
@@ -363,7 +427,14 @@ export default function QuizEditor({ id }: { id: string }) {
                   <label htmlFor={`q-${q.uid}`}>
                     Câu hỏi <span className="hint">— dùng ___ cho chỗ trống, [u]chữ[/u] để gạch chân, [b]chữ[/b] in đậm</span>
                   </label>
-                  <textarea className="textarea prose compact" id={`q-${q.uid}`} rows={2} style={{ minHeight: 0 }} value={q.q} onChange={(e) => setQuestion(si, qi, { q: e.target.value })} />
+                  <textarea
+                    className="textarea prose compact"
+                    id={`q-${q.uid}`}
+                    rows={q.type === "essay" ? 5 : 2}
+                    style={{ minHeight: 0 }}
+                    value={q.q}
+                    onChange={(e) => setQuestion(si, qi, { q: e.target.value })}
+                  />
                 </div>
                 <div className="field">
                   <label htmlFor={`tag-${q.uid}`}>
@@ -372,7 +443,30 @@ export default function QuizEditor({ id }: { id: string }) {
                   <input className="input compact" id={`tag-${q.uid}`} value={q.tag} onChange={(e) => setQuestion(si, qi, { tag: e.target.value })} placeholder="Unit 1" />
                 </div>
               </div>
-              {q.type === "mcq" ? (
+              <ImageField image={q.image} onChange={(image) => setQuestion(si, qi, { image })} />
+              {q.type === "essay" ? (
+                <div className="row-2" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,3fr)" }}>
+                  <div className="field">
+                    <label htmlFor={`mw-${q.uid}`}>Số từ tối thiểu</label>
+                    <input
+                      className="input compact"
+                      id={`mw-${q.uid}`}
+                      type="number"
+                      min={0}
+                      max={2000}
+                      value={q.minWords || ""}
+                      placeholder="0 = không yêu cầu"
+                      onChange={(e) => setQuestion(si, qi, { minWords: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`ex-${q.uid}`}>
+                      Gợi ý cho học sinh <span className="hint">(hiện cùng đề, ví dụ dàn ý)</span>
+                    </label>
+                    <input className="input compact" id={`ex-${q.uid}`} value={q.explain} onChange={(e) => setQuestion(si, qi, { explain: e.target.value })} />
+                  </div>
+                </div>
+              ) : q.type === "mcq" ? (
                 <div className="stack" style={{ gap: 6 }}>
                   <span className="tiny muted">Các lựa chọn — chọn nút tròn ở đáp án đúng:</span>
                   {q.options.map((o, oi) => (
@@ -420,12 +514,14 @@ export default function QuizEditor({ id }: { id: string }) {
                   <textarea className="textarea compact" id={`fa-${q.uid}`} rows={2} style={{ minHeight: 0 }} value={q.answerText} onChange={(e) => setQuestion(si, qi, { answerText: e.target.value })} />
                 </div>
               )}
-              <div className="field">
-                <label htmlFor={`ex-${q.uid}`}>
-                  Giải thích <span className="hint">(hiện sau khi nộp)</span>
-                </label>
-                <input className="input compact" id={`ex-${q.uid}`} value={q.explain} onChange={(e) => setQuestion(si, qi, { explain: e.target.value })} />
-              </div>
+              {q.type !== "essay" && (
+                <div className="field">
+                  <label htmlFor={`ex-${q.uid}`}>
+                    Giải thích <span className="hint">(hiện sau khi nộp)</span>
+                  </label>
+                  <input className="input compact" id={`ex-${q.uid}`} value={q.explain} onChange={(e) => setQuestion(si, qi, { explain: e.target.value })} />
+                </div>
+              )}
             </div>
           ))}
           <div className="row-actions">
@@ -434,6 +530,9 @@ export default function QuizEditor({ id }: { id: string }) {
             </button>
             <button className="btn btn-ghost btn-sm" type="button" onClick={() => setSection(si, { questions: [...s.questions, blankQ("fill")] })}>
               + Câu điền từ
+            </button>
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => setSection(si, { questions: [...s.questions, blankQ("essay")] })}>
+              + Bài viết
             </button>
           </div>
         </section>
@@ -503,7 +602,9 @@ function JsonDialog({ draft, onClose, onApply }: { draft: Draft; onClose: () => 
         ...(s.listen ? { listen: String(s.listen) } : {}),
         ...(s.passage ? { passage: String(s.passage) } : {}),
         questions: ((s.questions as Record<string, unknown>[]) ?? []).map((q) =>
-          q.type === "fill"
+          q.type === "essay"
+            ? { type: "essay" as const, tag: q.tag ? String(q.tag) : undefined, q: String(q.q ?? ""), minWords: q.minWords ? Number(q.minWords) : undefined, explain: q.explain ? String(q.explain) : undefined }
+            : q.type === "fill"
             ? { type: "fill" as const, tag: q.tag ? String(q.tag) : undefined, q: String(q.q ?? ""), answer: (Array.isArray(q.answer) ? q.answer : [q.answer]).map(String), explain: q.explain ? String(q.explain) : undefined }
             : { type: "mcq" as const, tag: q.tag ? String(q.tag) : undefined, q: String(q.q ?? ""), options: ((q.options as unknown[]) ?? []).map(String), answer: Number(q.answer), explain: q.explain ? String(q.explain) : undefined },
         ),
@@ -540,5 +641,50 @@ function JsonDialog({ draft, onClose, onApply }: { draft: Draft; onClose: () => 
         </button>
       </div>
     </Modal>
+  );
+}
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+/** Optional picture for a question (charts, maps for IELTS Task 1…), uploaded to Convex storage. */
+function ImageField({ image, onChange }: { image: EImage | null; onChange: (img: EImage | null) => void }) {
+  const { token, toast } = useAdmin();
+  const getUploadUrl = useMutation(api.admin.generateUploadUrl);
+  const [busy, setBusy] = useState(false);
+
+  async function pick(file: File | undefined) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return toast("Chỉ nhận file ảnh (PNG, JPG, GIF, WebP).");
+    if (file.size > MAX_IMAGE_BYTES) return toast("Ảnh quá lớn, tối đa 8 MB.");
+    setBusy(true);
+    try {
+      const res = await fetch(await getUploadUrl({ token }), { method: "POST", headers: { "Content-Type": file.type }, body: file });
+      if (!res.ok) throw new Error(String(res.status));
+      const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
+      onChange({ storageId, name: file.name, url: URL.createObjectURL(file) });
+    } catch (e) {
+      toast(errMsg(e, "Tải ảnh chưa thành công, thử lại nhé."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (image)
+    return (
+      <div className="img-field">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {image.url && <img src={image.url} alt={image.name} />}
+        <span className="tiny muted">{image.name}</span>
+        <button className="link-btn danger" type="button" onClick={() => onChange(null)}>
+          Bỏ ảnh
+        </button>
+      </div>
+    );
+  return (
+    <label className="img-field add">
+      <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => pick(e.target.files?.[0])} />
+      <span className="link-btn">{busy ? "Đang tải ảnh…" : "+ Thêm ảnh minh hoạ"}</span>
+      <span className="tiny muted">(biểu đồ IELTS Task 1, tranh, bản đồ…)</span>
+    </label>
   );
 }

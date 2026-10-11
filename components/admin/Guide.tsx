@@ -270,6 +270,12 @@ export default function Guide() {
           {/* ---------------- students ---------------- */}
           <Section id="hoc-sinh" icon="users" title="Học sinh & mã cá nhân" lead="Mỗi em có một mã riêng để vào học, không cần email hay mật khẩu. Mã quyết định em thấy những thư mục nào.">
             <h3>Thêm cả lớp một lần</h3>
+            <Note kind="tip">
+              Có sẵn file Excel danh sách lớp? Chọn <b>Tải file Excel (.xlsx)</b>: hệ thống tự tìm cột <b>Họ và tên</b>, <b>Lớp</b>, <b>Số điện thoại</b> (kể cả file tách cột “Họ” và
+              “Tên”), hiện bảng xem trước, đánh dấu dòng trùng hoặc thiếu lớp. Có thể tạo mã theo mẫu <span className="m-code">2 chữ cuối của tên + 4 số cuối SĐT</span>, ví dụ “Trần
+              Bảo An”, SĐT …4821 → <span className="m-code">baoan4821</span>. File chỉ được đọc trên máy thầy cô; số điện thoại không được lưu lên hệ thống. Xong thì bấm{" "}
+              <b>Tải file Excel</b> để có danh sách mã.
+            </Note>
             <div className="g-split">
               <Steps
                 items={[
@@ -277,7 +283,7 @@ export default function Guide() {
                     Vào <b>Học sinh</b> → <span className="kbd">Thêm nhiều học sinh</span>.
                   </>,
                   <>
-                    Dán danh sách, <b>mỗi dòng một em</b>. Có thể ghi <span className="g-code">Họ tên, Lớp</span> hoặc copy thẳng 2 cột từ Excel.
+                    Chọn <b>Tải file Excel</b>, hoặc <b>Dán danh sách</b> mỗi dòng một em (ghi <span className="g-code">Họ tên, Lớp</span> hoặc copy 2 cột từ Excel).
                   </>,
                   <>
                     Dòng nào không ghi lớp sẽ dùng <b>Lớp chung</b>.
@@ -286,7 +292,7 @@ export default function Guide() {
                     Tick các <b>thư mục được mở</b> rồi bấm <b>Tạo mã</b>. Hệ thống tạo mã dạng <span className="m-code">binh4821</span> (tên + 4 số).
                   </>,
                   <>
-                    Bấm <b>Sao chép</b> hoặc <b>Tải CSV</b> để gửi mã cho từng em (qua Zalo, giấy phát tay…).
+                    Kiểm tra bảng xem trước, rồi bấm <b>Tải file Excel</b> hoặc <b>Sao chép</b> để gửi mã cho từng em (qua Zalo, giấy phát tay…).
                   </>,
                 ]}
               />
@@ -394,10 +400,10 @@ export default function Guide() {
                       Với mỗi câu trắc nghiệm: gõ câu hỏi, gõ các lựa chọn, bấm <b>nút tròn</b> cạnh đáp án đúng (chuyển màu xanh).
                     </>,
                     <>
-                      Ghi <b>giải thích</b> để em hiểu vì sao sai. Phần này chỉ hiện sau khi nộp.
+                      Ghi <b>giải thích</b> để em hiểu vì sao sai. Phần này chỉ hiện sau khi nộp. Cần ảnh (biểu đồ, tranh)? Bấm <b>+ Thêm ảnh minh hoạ</b> ở câu đó.
                     </>,
                     <>
-                      Bấm <span className="kbd">Lưu bài</span> rồi <b>Xem như học sinh</b> để kiểm tra lại.
+                      Bấm <span className="kbd">Lưu bài</span> rồi <b>Xem trước như học sinh</b> để làm thử. Chế độ xem trước không cần mã học sinh, xem được cả bản nháp và không lưu điểm.
                     </>,
                   ]}
                 />
@@ -447,6 +453,16 @@ export default function Guide() {
                     <td>Word form, viết lại câu, điền chỗ trống IELTS</td>
                     <td>
                       Mỗi dòng một cách viết đúng, ví dụ <span className="g-code">6.5</span> và <span className="g-code">six point five</span>. Không phân biệt hoa/thường, dấu chấm cuối câu.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <b>Bài viết</b>
+                    </td>
+                    <td>IELTS Writing Task 1 &amp; 2, viết đoạn, viết thư</td>
+                    <td>
+                      Đề bài, số từ tối thiểu, gợi ý, ảnh biểu đồ (nếu có). Học sinh viết ngay trên web, có đếm từ; thầy cô <b>nhận xét và chấm band</b> ở trang Kết quả. Nút{" "}
+                      <b>Dùng mẫu IELTS Writing</b> tạo sẵn Task 1 (150 từ) và Task 2 (250 từ).
                     </td>
                   </tr>
                   <tr>
@@ -532,7 +548,7 @@ export default function Guide() {
                     </>,
                     <>Chọn thư mục, đặt tên (tên file được điền sẵn), thêm mô tả nếu cần.</>,
                     <>
-                      Bấm <b>Lưu</b> và chờ thanh tải lên chạy đến 100%.
+                      Bấm <b>Lưu</b> và chờ thanh tải lên chạy đến 100%. Chưa muốn giao ngay? Tick <b>Tạm ẩn</b>, hoặc bấm <b>Ẩn / Hiện</b> trong danh sách bất cứ lúc nào.
                     </>,
                   ]}
                 />
@@ -589,7 +605,7 @@ export default function Guide() {
                     Bấm <b>Chi tiết</b> để xem em chọn gì ở từng câu, câu nào sai, câu nào bỏ trống.
                   </>,
                   <>
-                    Bấm <b>Tải CSV</b> để mở bằng Excel hoặc Google Sheets, nhập vào sổ điểm.
+                    Bấm <b>Tải Excel</b> để mở bằng Excel hoặc Google Sheets, nhập vào sổ điểm.
                   </>,
                 ]}
               />
@@ -630,10 +646,45 @@ export default function Guide() {
                   </span>
                   <Pin n={3} />
                   <span className="m-btn" style={{ flex: "none", marginLeft: "auto" }}>
-                    Tải CSV
+                    Tải Excel
                   </span>
                   <Pin n={4} />
                 </div>
+              </Mock>
+            </div>
+            <h3>Chấm bài viết</h3>
+            <div className="g-split">
+              <Steps
+                items={[
+                  <>
+                    Khi có bài viết mới, trang <b>Tổng quan</b> báo “✍️ … bài viết chờ nhận xét”. Bấm vào, hoặc ở <b>Kết quả</b> tick <b>Chỉ bài viết chờ nhận xét</b>.
+                  </>,
+                  <>
+                    Bấm <b>Chấm bài viết</b>: xem đề, bài của em và số từ.
+                  </>,
+                  <>
+                    Viết <b>nhận xét</b>. Có thể chấm một band, hoặc bật <b>4 tiêu chí IELTS</b> (TA, CC, LR, GRA) để hệ thống tự tính band tổng theo cách làm tròn của IELTS.
+                  </>,
+                  <>
+                    Bấm <b>Lưu nhận xét &amp; trả bài</b>. Học sinh thấy nhận xét ngay ở đầu trang bài đó, và có thể sửa bài rồi nộp lại.
+                  </>,
+                ]}
+              />
+              <Mock title="Kết quả → Chấm bài viết">
+                <div className="m-area">{"In conclusion, I believe that the benefits of studying abroad outweigh…"}</div>
+                <span className="tiny muted">268 từ · yêu cầu tối thiểu 250</span>
+                <div className="m-row">
+                  <div className="m-area">Bài có quan điểm rõ ràng. Cần thêm ví dụ cụ thể ở đoạn 2…</div>
+                  <Pin n={3} />
+                </div>
+                <div className="m-chips">
+                  <span className="m-chip on">TA 6.5</span>
+                  <span className="m-chip on">CC 6.0</span>
+                  <span className="m-chip on">LR 6.5</span>
+                  <span className="m-chip on">GRA 6.0</span>
+                  <span className="m-chip">Band tổng 6.5</span>
+                </div>
+                <span className="m-btn primary">Lưu nhận xét &amp; trả bài</span>
               </Mock>
             </div>
             <Note kind="tip">
@@ -758,7 +809,7 @@ export default function Guide() {
               </div>
             </div>
             <Note kind="tip">
-              Muốn xem đúng như học sinh? Mở trang chủ ở cửa sổ ẩn danh và đăng nhập bằng mã của một học sinh thử, hoặc bấm <b>Xem như học sinh</b> trong trình soạn bài.
+              Muốn xem đúng như học sinh? Mở trang chủ ở cửa sổ ẩn danh và đăng nhập bằng mã của một học sinh thử, hoặc bấm <b>Xem trước như học sinh</b> trong trình soạn bài (hoặc <b>Xem trước</b> ở danh sách bài).
             </Note>
           </Section>
 
@@ -796,10 +847,14 @@ const FAQ: [string, React.ReactNode][] = [
     </>,
   ],
   ["Em làm một bài nhiều lần thì tính điểm nào?", "Mọi lượt đều được lưu. Ở trang Kết quả, bật “Chỉ lần cao nhất” để xem điểm tốt nhất của mỗi em; tắt đi để xem cả quá trình."],
-  ["Tôi muốn ẩn một bài tạm thời?", "Mở bài, bỏ chọn “Hiện cho học sinh” rồi Lưu. Bài thành bản nháp, điểm cũ vẫn còn."],
+  ["Tôi muốn ẩn một bài tạm thời?", "Bài làm: mở bài, bỏ chọn “Hiện cho học sinh” rồi Lưu (thành bản nháp, điểm cũ vẫn còn). Tài liệu, PDF: bấm “Ẩn” trong danh sách, bấm “Hiện” để giao lại."],
   ["Gõ sai đáp án và đã có em làm rồi?", "Sửa đáp án rồi Lưu. Các lượt đã nộp giữ điểm cũ; nếu cần công bằng, hãy xóa các lượt đó ở trang Kết quả và nhờ các em làm lại."],
   ["Bài có mã riêng hoạt động thế nào?", "Mỗi em nhập mã bài một lần là mở được bài đó trên tài khoản của mình. Đổi mã bài không khóa lại những em đã mở trước đó."],
   ["File PDF quá 50 MB?", "Nén file trước khi tải lên (ví dụ dùng ilovepdf.com hoặc smallpdf.com → Compress), hoặc tách thành nhiều phần nhỏ theo Unit."],
+  [
+    "Học sinh xem nhận xét bài viết ở đâu?",
+    "Ở chính trang bài đó: phần “Bài viết đã nộp” nằm trên đầu, có nhận xét, band và tên người chấm. Ngoài trang chủ, nút của bài hiện “Chờ nhận xét” hoặc “Có nhận xét ✓”. Bài viết đang làm dở được lưu nháp trên máy nên lỡ đóng trình duyệt cũng không mất.",
+  ],
   ["Học sinh đổi điện thoại thì sao?", "Chỉ cần nhập lại mã trên máy mới. Điểm và bài đã làm vẫn còn vì được lưu trên máy chủ."],
   ["Nhiều thầy cô dùng chung một tài khoản được không?", "Được nhưng không nên. Quản trị chính có thể tạo tài khoản riêng cho từng người ở Cài đặt & tài khoản, vừa an toàn vừa dễ khóa khi có người nghỉ."],
 ];
@@ -937,7 +992,7 @@ const CHECKLIST: [string, string][] = [
   ["Xóa 3 học sinh mẫu (ghi chú “Học sinh mẫu”)", "/admin/hoc-sinh"],
   ["Kiểm tra / tạo thư mục cho các lớp đang dạy", "/admin/thu-muc"],
   ["Dán danh sách lớp, tạo mã học sinh", "/admin/hoc-sinh"],
-  ["Soạn hoặc kiểm tra bài đầu tiên (Xem như học sinh)", "/admin/bai-lam"],
+  ["Soạn hoặc kiểm tra bài đầu tiên (Xem trước như học sinh)", "/admin/bai-lam"],
   ["Tải lên một phiếu bài tập PDF", "/admin/tai-lieu"],
   ["Gửi mã cho từng em và hướng dẫn 3 bước đăng nhập", "#hoc-sinh-thay-gi"],
   ["Làm thử một bài bằng mã học sinh, xem điểm ở trang Kết quả", "/admin/ket-qua"],

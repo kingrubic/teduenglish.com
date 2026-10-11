@@ -700,3 +700,21 @@ td code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospac
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 @container site (max-width: 640px) { .banner .swoosh { opacity: .4; } }
+
+/* ---------- Writing (essay) questions ---------- */
+.q-image { max-width: 100%; max-height: 520px; width: auto; border-radius: 12px; border: 1px solid var(--line); background: #fff; }
+.essay-prompt { font-weight: 600; line-height: 1.65; white-space: pre-line; }
+.essay-tip { font-size: 0.88rem; color: var(--muted); background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
+.essay-input { min-height: 280px; font-family: var(--font-body); font-size: 1rem; line-height: 1.7; }
+.essay-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; font-size: 0.82rem; }
+.essay-meta .wc { font-weight: 700; font-variant-numeric: tabular-nums; }
+.essay-meta .wc.ok { color: var(--good); }
+.essay-meta .wc.low { color: var(--bad); }
+.my-writing .mw-item { border: 1px solid var(--line); border-radius: 14px; padding: 0 14px; }
+.my-writing .mw-item[open] { background: var(--surface-2); }
+.my-writing summary { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0; cursor: pointer; font-weight: 700; color: var(--brand-ink); }
+.mw-essay { display: flex; flex-direction: column; gap: 8px; padding-bottom: 14px; }
+.mw-text { white-space: pre-wrap; font-size: 0.93rem; line-height: 1.7; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; max-height: 320px; overflow: auto; }
+.mw-review { border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 12px 12px 0; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+.mw-band { font-family: var(--font-display); font-size: 1.1rem; color: var(--accent-ink); }
+.mw-comment { white-space: pre-wrap; line-height: 1.7; }

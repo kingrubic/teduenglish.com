@@ -9,6 +9,8 @@
  */
 
 import type * as admin from "../admin.js";
+import type * as clarify from "../clarify.js";
+import type * as clarifyData from "../clarifyData.js";
 import type * as crons from "../crons.js";
 import type * as lib from "../lib.js";
 import type * as model from "../model.js";
@@ -24,6 +26,8 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
+  clarify: typeof clarify;
+  clarifyData: typeof clarifyData;
   crons: typeof crons;
   lib: typeof lib;
   model: typeof model;

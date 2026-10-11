@@ -1,0 +1,189 @@
+/* Content of /need-clarify: what is built, what is not, and the questions for the teacher.
+ * Pure data, shared by the page and the Convex functions (which validate question ids). */
+
+export type ClarifyQuestion = {
+  id: string;
+  group: string;
+  title: string;
+  context?: string;
+  options?: string[];
+  /** Several options may be ticked. */
+  multi?: boolean;
+  placeholder?: string;
+  files?: string; // when set, the question accepts attachments; the text explains what to attach
+};
+
+export const DONE: { area: string; icon: string; items: string[] }[] = [
+  {
+    area: "Trang học sinh",
+    icon: "🎒",
+    items: [
+      "Đăng nhập bằng mã cá nhân, chỉ thấy thư mục được giao",
+      "Trắc nghiệm, điền từ, viết lại câu: chấm tự động, có đáp án và giải thích sau khi nộp",
+      "Phần nghe đọc bằng giọng tiếng Anh, mỗi nhân vật một giọng, có tốc độ chậm/chuẩn",
+      "Phần đọc hiểu: bài đọc nằm cạnh câu hỏi",
+      "Band IELTS Listening/Reading tham khảo",
+      "Bài có mã riêng (ví dụ TS10)",
+      "Làm lại với câu hỏi xáo trộn; bài đang làm được lưu nháp",
+      "Tài liệu PDF: xem ngay trên web (chia đôi màn hình) hoặc tải về",
+      "Bài viết (IELTS Writing): viết trên web, đếm từ, xem nhận xét của thầy",
+      "Dùng tốt trên điện thoại",
+    ],
+  },
+  {
+    area: "Khu vực giáo viên",
+    icon: "🧑‍🏫",
+    items: [
+      "Tài khoản riêng cho từng giáo viên (quản trị chính / giáo viên)",
+      "Học sinh: thêm từng em, dán danh sách, tải file Excel, tạo mã theo tên + số điện thoại",
+      "Khóa mã, đổi mã, mở thư mục cho cả lớp một lần",
+      "Thư mục bài học: thêm, sửa, sắp xếp",
+      "Trình soạn bài: trắc nghiệm, điền từ, bài viết, phần nghe, phần đọc, ảnh minh hoạ, mẫu IELTS Writing, nhập từ data.js/JSON",
+      "Xem trước bài như học sinh (không cần mã, không lưu điểm)",
+      "Tài liệu & PDF: tải lên, ẩn/hiện, sắp xếp",
+      "Kết quả: lọc theo lớp/bài/học sinh, xem từng câu, tải Excel",
+      "Chấm bài viết: nhận xét + band, hoặc 4 tiêu chí IELTS tự tính band tổng",
+      "Trang hướng dẫn sử dụng có hình minh hoạ",
+    ],
+  },
+  {
+    area: "Hệ thống & bảo mật",
+    icon: "🔒",
+    items: [
+      "Chạy trên teduenglish.com, dữ liệu lưu trên Convex Cloud",
+      "Đáp án nằm trên máy chủ, học sinh không xem trước được",
+      "Mật khẩu giáo viên được mã hoá; khoá 15 phút sau 5 lần nhập sai",
+      "Bắt đổi mật khẩu tạm ở lần đăng nhập đầu",
+    ],
+  },
+];
+
+export const NOT_DONE: { title: string; note: string; question: string }[] = [
+  { title: "Phân quyền theo Unit / lớp cho từng bài", note: "Hiện mở theo cả thư mục.", question: "unit-permissions" },
+  { title: "Mã bài theo khối có xoay vòng / hết hạn", note: "Hiện đổi mã bài không khoá lại em đã mở.", question: "rotating-codes" },
+  { title: "Open cloze có chỗ trống trong đoạn văn, rút đề ngẫu nhiên", note: "Hiện làm gần tương tự bằng các dạng câu sẵn có.", question: "chuyen-anh-formats" },
+  { title: "Đếm giờ và tự nộp khi hết giờ", note: "Hiện thời gian chỉ là gợi ý.", question: "timer" },
+  { title: "Band Writing tổng của cả bài (Task 2 tính gấp đôi)", note: "Hiện chấm band riêng từng Task.", question: "writing-scoring" },
+  { title: "Phần nghe dùng file MP3 thật", note: "Hiện dùng giọng đọc của máy.", question: "audio" },
+  { title: "Nhập các bộ đề dài của thầy (GS8, Chuyên Anh, IELTS 2 bộ)", note: "Đang chờ file đề.", question: "content" },
+  { title: "Tính năng AI", note: "Bản demo chỉ có khung trống, chưa chạy thật.", question: "ai" },
+];
+
+export const QUESTIONS: ClarifyQuestion[] = [
+  {
+    id: "brand",
+    group: "Thương hiệu",
+    title: "Tên hiển thị trên web là gì, và học sinh gọi giáo viên thế nào?",
+    context: "Web đang dùng “TEDU English” và “thầy cô”. Bản demo của thầy dùng “Toàn English Lab” và “thầy Toàn”.",
+    options: ["TEDU English", "Toàn English Lab", "Tên khác (ghi bên dưới)"],
+    placeholder: "Cách gọi giáo viên, ví dụ: thầy Toàn",
+  },
+  {
+    id: "writing-scoring",
+    group: "IELTS Writing",
+    title: "Thầy muốn chấm bài Writing theo kiểu nào?",
+    context: "Hiện có thể chỉ nhận xét, chấm 1 band, hoặc chấm 4 tiêu chí để tự tính band.",
+    options: ["Chỉ nhận xét", "Nhận xét + 1 band", "Luôn chấm đủ 4 tiêu chí", "Cần thêm band Writing tổng (Task 2 tính gấp đôi)"],
+    multi: true,
+    placeholder: "Ghi chú thêm (không bắt buộc)",
+  },
+  {
+    id: "timer",
+    group: "IELTS Writing",
+    title: "Có cần đếm giờ và tự nộp khi hết giờ như thi thật không?",
+    options: ["Có, tự nộp khi hết giờ", "Có đếm giờ nhưng không tự nộp", "Không cần"],
+    placeholder: "Áp dụng cho bài nào? (Writing, Listening, Reading…)",
+  },
+  {
+    id: "writing-prompts",
+    group: "IELTS Writing",
+    title: "Thầy có sẵn đề Writing và ảnh biểu đồ Task 1 không?",
+    options: ["Có, em gửi kèm bên dưới", "Chưa có, nhờ soạn vài đề mẫu", "Chưa cần"],
+    files: "Đề Writing, ảnh biểu đồ (Word, PDF, ảnh…)",
+  },
+  {
+    id: "content",
+    group: "Nội dung đề",
+    title: "Thầy gửi giúp các bộ đề trong bản demo để nhập vào web",
+    context: "GS8 Trắc nghiệm Unit 1–3 (50 câu), Chuyên Anh (55 câu), IELTS Practice 1 & 2 (Listening + Reading 40 câu).",
+    options: ["Đề tự soạn / có quyền sử dụng", "Lấy từ sách có bản quyền (Cambridge…)", "Không rõ nguồn"],
+    placeholder: "Nguồn đề, ghi chú…",
+    files: "File đề: Word, Excel, PDF đều được",
+  },
+  {
+    id: "audio",
+    group: "Nội dung đề",
+    title: "Phần nghe: dùng giọng đọc của máy hay file MP3 thật?",
+    options: ["Giọng đọc của máy là đủ", "Có file MP3, muốn tải lên", "Muốn giọng AI tự nhiên (có chi phí nhỏ)"],
+    files: "File MP3 (nếu có)",
+  },
+  {
+    id: "excel-sample",
+    group: "Học sinh & mã",
+    title: "Thầy gửi giúp một file Excel danh sách lớp thật để kiểm tra",
+    context: "Có thể che bớt tên / số điện thoại, chỉ cần giữ đúng các cột như file thầy hay dùng.",
+    files: "File .xlsx danh sách lớp",
+    placeholder: "Ghi chú về file (không bắt buộc)",
+  },
+  {
+    id: "code-style",
+    group: "Học sinh & mã",
+    title: "Thầy thích mã học sinh kiểu nào?",
+    options: ["Tên + 4 số cuối SĐT (vd: baoan4821)", "Tên + 4 số ngẫu nhiên (vd: an7305)", "Kiểu khác (ghi bên dưới)"],
+  },
+  {
+    id: "store-phone",
+    group: "Học sinh & mã",
+    title: "Có muốn lưu số điện thoại phụ huynh vào hệ thống không?",
+    context: "Hiện chỉ dùng 4 số cuối để tạo mã, không lưu số điện thoại.",
+    options: ["Không lưu (như hiện tại)", "Có, lưu để liên hệ phụ huynh"],
+  },
+  {
+    id: "code-visibility",
+    group: "Học sinh & mã",
+    title: "Mã học sinh nên tra lại được hay chỉ hiện một lần?",
+    context: "Tra lại được: em quên mã thì giáo viên xem lại ngay. Chỉ hiện một lần: an toàn hơn nhưng quên là phải tạo mã mới.",
+    options: ["Tra lại được (như hiện tại)", "Chỉ hiện một lần"],
+  },
+  {
+    id: "unit-permissions",
+    group: "Tính năng chưa làm",
+    title: "Có cần giới hạn từng bài / tài liệu theo Unit hoặc lớp không?",
+    options: ["Cần", "Không, mở theo thư mục là đủ"],
+    placeholder: "Nếu cần: thầy chia Unit thế nào? Ví dụ lớp 8A1 mới học đến Unit 3…",
+  },
+  {
+    id: "rotating-codes",
+    group: "Tính năng chưa làm",
+    title: "Có cần mã bài theo khối có xoay vòng hoặc hết hạn không?",
+    context: "Đổi mã thì khoá lại cả những em đã mở trước đó, hoặc mã tự hết hạn sau X ngày.",
+    options: ["Cần xoay vòng (đổi mã là khoá lại)", "Cần mã tự hết hạn", "Không cần"],
+    multi: true,
+  },
+  {
+    id: "chuyen-anh-formats",
+    group: "Tính năng chưa làm",
+    title: "Dạng đề Chuyên Anh cần thêm",
+    options: ["Open cloze: chỗ trống nằm ngay trong đoạn văn", "Tìm lỗi sai (gạch chân A/B/C/D trong câu)", "Mỗi lần làm rút ngẫu nhiên từ kho đề", "Không cần thêm"],
+    multi: true,
+  },
+  {
+    id: "ai",
+    group: "Tính năng chưa làm",
+    title: "Thầy muốn dùng AI vào việc gì?",
+    context: "Cần tài khoản dịch vụ AI và có chi phí; bài làm của học sinh sẽ được gửi sang dịch vụ đó để xử lý.",
+    options: ["Gợi ý nhận xét bài viết để thầy duyệt", "Chấm sơ bộ band Writing", "Soạn đề / câu hỏi", "Chưa cần AI"],
+    multi: true,
+    placeholder: "Mong muốn cụ thể…",
+  },
+  {
+    id: "other",
+    group: "Góp ý khác",
+    title: "Thầy có góp ý hoặc yêu cầu nào khác không?",
+    placeholder: "Bất cứ điều gì thầy muốn thêm, sửa hoặc bỏ…",
+    files: "File tham khảo (nếu có)",
+  },
+];
+
+export const QUESTION_IDS = new Set(QUESTIONS.map((q) => q.id));
+export const MAX_CLARIFY_FILE_BYTES = 100 * 1024 * 1024;

@@ -4,6 +4,7 @@ import "./site.css";
 import "./admin.css";
 import "./reader.css";
 import "./guide.css";
+import "./clarify.css";
 
 const description =
   "Góc luyện tập tiếng Anh dành cho học sinh TEDU English: bài trắc nghiệm, điền từ, nghe, đọc và tài liệu được giao theo mã cá nhân.";

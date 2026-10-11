@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { firstName } from "@/convex/model";
-import { FolderCard, Loading, LoginForm, Swoosh, type DoneMap, type FolderInfo, type QuizMeta, type ResourceRow } from "./parts";
+import { FolderCard, Loading, LoginForm, Swoosh, doneLabel, type DoneMap, type FolderInfo, type QuizMeta, type ResourceRow } from "./parts";
 import { useSite, type HomeData } from "./SiteShell";
 
 export default function HomeView() {
@@ -128,7 +128,7 @@ function Dashboard({ home }: { home: HomeData }) {
                     {q.subtitle ? ` · ${q.subtitle}` : ""}
                   </p>
                 </div>
-                <span className={`btn ${rec ? "btn-ghost" : "btn-primary"} go`}>{rec ? `Làm lại · ${rec.best}/${rec.total}` : "Vào làm bài →"}</span>
+                <span className={`btn ${rec ? "btn-ghost" : "btn-primary"} go`}>{rec ? (rec.review ? doneLabel(rec) : `Làm lại · ${doneLabel(rec)}`) : "Vào làm bài →"}</span>
               </Link>
             );
           })}

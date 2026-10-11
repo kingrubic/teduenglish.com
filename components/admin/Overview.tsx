@@ -22,6 +22,7 @@ export default function Overview() {
           <div className="banner-meta">
             <span>{data.counts.attemptsWeek} lượt nộp bài trong 7 ngày</span>
             <span>{data.counts.activeStudentsWeek} học sinh hoạt động</span>
+            {data.counts.pendingReviews > 0 && <span>✍️ {data.counts.pendingReviews} bài viết chờ nhận xét</span>}
           </div>
         )}
       </section>
@@ -32,6 +33,14 @@ export default function Overview() {
         </p>
       ) : (
         <>
+          <Link className="alert alert-good" href="/need-clarify" style={{ display: "block", marginTop: 18, textDecoration: "none" }}>
+            📋 Tiến độ dự án &amp; câu hỏi cần thầy trả lời →
+          </Link>
+          {data.counts.pendingReviews > 0 && (
+            <Link className="alert alert-good" href="/admin/ket-qua?cho=1" style={{ display: "block", marginTop: 18, textDecoration: "none" }}>
+              ✍️ Có <b>{data.counts.pendingReviews}</b> bài viết đang chờ thầy cô nhận xét. Bấm để chấm ngay →
+            </Link>
+          )}
           <div className="stats-row">
             <Link className="stat-tile" href="/admin/hoc-sinh" style={{ textDecoration: "none" }}>
               <b>{data.counts.students}</b>
