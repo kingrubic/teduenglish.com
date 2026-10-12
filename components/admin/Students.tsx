@@ -6,8 +6,8 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { noMarks, parseStudentLines, phoneCode } from "@/convex/model";
-import { downloadXlsx, readClassList, type ClassList, type ClassListRow } from "@/lib/excel";
+import { lastTwoWords, noMarks, normCode, parseStudentLines, phoneCode } from "@/convex/model";
+import { downloadXlsx, readClassList, rowsFrom, type ClassListRow, type SheetTable } from "@/lib/excel";
 import { copyText, errMsg, stamp } from "@/lib/ui";
 import { Modal, useAdmin, useRun } from "./AdminShell";
 
@@ -371,8 +371,8 @@ function StudentForm({ student, folders, classes, onClose }: { student: Student 
   );
 }
 
-type CodeMode = "random" | "phone";
-type Preview = ClassListRow & { code: string | null; status: "ok" | "noclass" | "dup" | "exists" | "taken"; note: string };
+type CodeMode = "random" | "lastTwo" | "file";
+type Preview = ClassListRow & { newCode: string | null; status: "ok" | "noclass" | "dup" | "exists" | "taken" | "badcode"; note: string };
 
 const STATUS_LABEL: Record<Preview["status"], string> = {
   ok: "Sẵn sàng",
@@ -380,6 +380,7 @@ const STATUS_LABEL: Record<Preview["status"], string> = {
   dup: "Trùng trong danh sách",
   exists: "Đã có học sinh này",
   taken: "Mã đã được dùng",
+  badcode: "Mã không hợp lệ",
 };
 
 /** Paste a class list or upload an Excel file; preview every row before creating codes. */
@@ -388,19 +389,24 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
   const create = useMutation(api.admin.bulkCreateStudents);
   const [source, setSource] = useState<"file" | "paste">("file");
   const [text, setText] = useState("");
-  const [fileList, setFileList] = useState<ClassList | null>(null);
+  const [sheet, setSheet] = useState<SheetTable | null>(null);
   const [fileName, setFileName] = useState("");
   const [reading, setReading] = useState(false);
   const [className, setClassName] = useState("");
-  const [mode, setMode] = useState<CodeMode>("random");
+  const [mode, setMode] = useState<CodeMode>("lastTwo");
   const [picked, setPicked] = useState<string[]>([]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<{ created: { name: string; className: string; code: string }[]; skipped: { name: string; className: string; reason: string }[] } | null>(null);
 
   const raw: ClassListRow[] =
-    source === "file" ? (fileList?.rows ?? []).map((r) => ({ ...r, className: r.className || className.trim() })) : parseStudentLines(text, className).map((r) => ({ ...r, phone: "" }));
+    source === "file"
+      ? (sheet ? rowsFrom(sheet) : []).map((r) => ({ ...r, className: r.className || className.trim() }))
+      : parseStudentLines(text, className).map((r) => ({ ...r, code: "" }));
   const hasPhones = raw.some((r) => r.phone.replace(/\D/g, "").length >= 4);
+  const hasCodes = raw.some((r) => normCode(r.code));
+  // Fall back when the chosen way of making codes no longer fits the data.
+  const effectiveMode: CodeMode = mode === "file" && !hasCodes ? "lastTwo" : mode;
 
   // Work out every row's fate before anything is created.
   const existing = new Set(students.map((s) => `${noMarks(s.name).toLowerCase()}|${s.className.toLowerCase()}`));
@@ -408,16 +414,17 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
   const seen = new Set<string>();
   const preview: Preview[] = raw.map((r) => {
     const key = `${noMarks(r.name).toLowerCase()}|${r.className.toLowerCase()}`;
-    const code = mode === "phone" ? phoneCode(r.name, r.phone) : null;
+    const code = effectiveMode === "lastTwo" ? phoneCode(r.name, r.phone) : effectiveMode === "file" ? normCode(r.code) || null : null;
     let status: Preview["status"] = "ok";
     if (!r.className) status = "noclass";
+    else if (code && !/^[a-z0-9._-]{4,40}$/.test(code)) status = "badcode";
     else if (seen.has(key) || (code && seen.has(`code:${code}`))) status = "dup";
     else if (existing.has(key)) status = "exists";
     else if (code && usedCodes.has(code)) status = "taken";
     seen.add(key);
     if (code) seen.add(`code:${code}`);
-    const note = mode === "phone" && !code ? "Thiếu SĐT → mã ngẫu nhiên" : "";
-    return { ...r, code, status, note };
+    const note = effectiveMode === "file" && !code ? "Thiếu mã → tạo mới" : "";
+    return { ...r, newCode: code, status, note };
   });
   const ready = preview.filter((p) => p.status === "ok");
 
@@ -426,12 +433,12 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
     setErr("");
     setReading(true);
     try {
-      const list = await readClassList(file);
-      setFileList(list);
+      const t = await readClassList(file);
+      setSheet(t);
       setFileName(file.name);
-      if (list.columns.phone) setMode("phone");
+      setMode(t.cols.code >= 0 ? "file" : "lastTwo");
     } catch (e) {
-      setFileList(null);
+      setSheet(null);
       setErr(e instanceof Error ? e.message : "Không đọc được file Excel.");
     } finally {
       setReading(false);
@@ -445,7 +452,11 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
     if (!picked.length) return setErr("Chọn ít nhất một thư mục.");
     setBusy(true);
     try {
-      setDone(await create({ token, rows: ready.map((p) => ({ name: p.name, className: p.className, ...(p.code ? { code: p.code } : {}) })), folders: picked }));
+      setDone(await create({ token, rows: ready.map((p) => ({
+          name: p.name,
+          className: p.className,
+          ...(p.newCode ? { code: p.newCode } : effectiveMode === "lastTwo" ? { style: "lastTwo" as const } : {}),
+        })), folders: picked }));
     } catch (e2) {
       setErr(errMsg(e2));
     } finally {
@@ -506,25 +517,47 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
             </label>
             <input className="input" id="b-file" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => onFile(e.target.files?.[0])} />
             {reading && <span className="tiny muted">Đang đọc file…</span>}
-            {fileList && (
-              <span className="tiny muted">
-                {fileName} · trang “{fileList.sheet}” · {fileList.rows.length} học sinh · cột tên: <b>{fileList.columns.name}</b>
-                {fileList.columns.className ? <> · cột lớp: <b>{fileList.columns.className}</b></> : " · không có cột lớp"}
-                {fileList.columns.phone ? <> · cột SĐT: <b>{fileList.columns.phone}</b></> : " · không có cột số điện thoại"}
-              </span>
+            {sheet && (
+              <>
+                <span className="tiny muted">
+                  {fileName} · trang “{sheet.sheet}” · {raw.length} học sinh · cột tên: <b>{[sheet.headers[sheet.cols.name], sheet.cols.nameLast >= 0 ? sheet.headers[sheet.cols.nameLast] : ""].filter(Boolean).join(" + ")}</b>
+                  {sheet.cols.className >= 0 ? <> · cột lớp: <b>{sheet.headers[sheet.cols.className]}</b></> : " · không có cột lớp"}
+                </span>
+                <div className="row-2">
+                  <ColumnPick
+                    id="b-col-code"
+                    label="Cột mã có sẵn"
+                    headers={sheet.headers}
+                    value={sheet.cols.code}
+                    onChange={(code) => {
+                      setSheet({ ...sheet, cols: { ...sheet.cols, code } });
+                      if (code >= 0) setMode("file");
+                    }}
+                  />
+                  <ColumnPick
+                    id="b-col-phone"
+                    label="Cột số điện thoại"
+                    headers={sheet.headers}
+                    value={sheet.cols.phone}
+                    onChange={(phone) => {
+                      setSheet({ ...sheet, cols: { ...sheet.cols, phone } });
+                      if (phone >= 0 && sheet.cols.code < 0) setMode("lastTwo");
+                    }}
+                  />
+                </div>
+              </>
             )}
           </div>
         ) : (
           <div className="field">
             <label htmlFor="b-list">
-              Danh sách <span className="hint">— mỗi dòng một em: “Họ tên” hoặc “Họ tên, Lớp” (copy 2 cột từ Excel cũng được)</span>
+              Danh sách <span className="hint">— mỗi dòng một em: “Họ tên”, “Họ tên, Lớp” hoặc “Họ tên, Lớp, SĐT” (copy các cột từ Excel cũng được)</span>
             </label>
             <textarea className="textarea prose" id="b-list" rows={6} value={text} onChange={(e) => setText(e.target.value)} placeholder={"Nguyễn Văn Bình, 8A2\nTrần Thị Mai, 8A2\nLê Hoàng Nam"} autoFocus />
           </div>
         )}
 
-        <div className="row-2">
-          <div className="field">
+        <div className="field">
             <label htmlFor="b-class">
               Lớp chung <span className="hint">(cho dòng không ghi lớp)</span>
             </label>
@@ -535,16 +568,34 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
               ))}
             </datalist>
           </div>
-          <div className="field">
-            <label htmlFor="b-mode">Cách tạo mã</label>
-            <select className="select" id="b-mode" value={mode} onChange={(e) => setMode(e.target.value as CodeMode)}>
-              <option value="random">Tên + 4 số ngẫu nhiên (binh4821)</option>
-              <option value="phone" disabled={!hasPhones}>
-                2 chữ cuối của tên + 4 số cuối SĐT (vanbinh6789){hasPhones ? "" : " — cần cột SĐT"}
-              </option>
-            </select>
+        <fieldset className="field" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend style={{ fontWeight: 700, fontSize: ".92rem", marginBottom: 8 }}>Cách tạo mã</legend>
+          <div className="mode-picks">
+            {(
+              [
+                ["file", "Giữ mã có sẵn trong file", "Dùng đúng mã ở cột mã của file (ví dụ mã đã cấp từ hệ thống cũ).", hasCodes, "File chưa có cột mã. Chọn cột ở ô “Cột mã có sẵn” phía trên nếu có."],
+                [
+                  "lastTwo",
+                  "Tên lót + tên + 4 số",
+                  hasPhones
+                    ? "Em có SĐT lấy 4 số cuối SĐT (Trần Bảo An, …4821 → baoan4821); em không có SĐT thì 4 số ngẫu nhiên."
+                    : "Ví dụ: Trần Bảo An → baoan + 4 số ngẫu nhiên. Có cột SĐT thì sẽ dùng 4 số cuối SĐT.",
+                  true,
+                  "",
+                ],
+                ["random", "Tên + 4 số ngẫu nhiên", "Ví dụ: Trần Bảo An → an7305.", true, ""],
+              ] as [CodeMode, string, string, boolean, string][]
+            ).map(([value, title, desc, enabled, why]) => (
+              <label key={value} className={`mode-pick${effectiveMode === value ? " on" : ""}${enabled ? "" : " off"}`}>
+                <input type="radio" name="b-mode" value={value} checked={effectiveMode === value} disabled={!enabled} onChange={() => setMode(value)} />
+                <span>
+                  <b>{title}</b>
+                  <span className="tiny muted">{enabled ? desc : why}</span>
+                </span>
+              </label>
+            ))}
           </div>
-        </div>
+        </fieldset>
         <FolderChecks folders={folders} value={picked} onChange={setPicked} />
 
         {preview.length > 0 && (
@@ -555,7 +606,7 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
                   <th>#</th>
                   <th>Họ tên</th>
                   <th>Lớp</th>
-                  {mode === "phone" && <th>SĐT</th>}
+                  {effectiveMode === "lastTwo" && hasPhones && <th>SĐT</th>}
                   <th>Mã</th>
                   <th>Trạng thái</th>
                 </tr>
@@ -566,9 +617,17 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
                     <td>{i + 1}</td>
                     <td>{p.name}</td>
                     <td>{p.className || "—"}</td>
-                    {mode === "phone" && <td className="mono">{p.phone.replace(/\D/g, "").length >= 4 ? `•••${p.phone.replace(/\D/g, "").slice(-4)}` : "—"}</td>}
+                    {effectiveMode === "lastTwo" && hasPhones && <td className="mono">{p.phone.replace(/\D/g, "").length >= 4 ? `•••${p.phone.replace(/\D/g, "").slice(-4)}` : "—"}</td>}
                     <td>
-                      {p.code ? <code>{p.code}</code> : <span className="muted tiny">tự tạo</span>}
+                      {p.newCode ? (
+                        <code>{p.newCode}</code>
+                      ) : effectiveMode === "lastTwo" ? (
+                        <>
+                          <code>{lastTwoWords(p.name) || "hs"}</code> <span className="muted tiny">+ 4 số ngẫu nhiên</span>
+                        </>
+                      ) : (
+                        <span className="muted tiny">tự tạo</span>
+                      )}
                       {p.note && <span className="sub">{p.note}</span>}
                     </td>
                     <td>{p.status === "ok" ? <span className="status on">Sẵn sàng</span> : <span className="status off">{STATUS_LABEL[p.status]}</span>}</td>
@@ -594,5 +653,22 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** Lets the teacher fix which spreadsheet column holds a value when detection guessed wrong. */
+function ColumnPick({ id, label, headers, value, onChange }: { id: string; label: string; headers: string[]; value: number; onChange: (i: number) => void }) {
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <select className="select compact" id={id} value={value} onChange={(e) => onChange(Number(e.target.value))}>
+        <option value={-1}>Không có</option>
+        {headers.map((h, i) => (
+          <option key={i} value={i}>
+            {h}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }

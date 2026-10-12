@@ -65,15 +65,15 @@ export function slugify(s: unknown): string {
     .slice(0, 60);
 }
 
-/** One student per line: "Name", "Name, Class", or tab/semicolon separated (pasted from Excel). */
-export function parseStudentLines(text: string, defaultClass = ""): { name: string; className: string }[] {
+/** One student per line: "Name", "Name, Class" or "Name, Class, Phone"; tab/semicolon separated works too (pasted from Excel). */
+export function parseStudentLines(text: string, defaultClass = ""): { name: string; className: string; phone: string }[] {
   return text
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean)
     .map((l) => {
-      const [n, c] = l.split(/\t|,|;/).map((x) => x.trim());
-      return { name: n ?? "", className: c || defaultClass.trim() };
+      const [n, c, ph] = l.split(/\t|,|;/).map((x) => x.trim());
+      return { name: n ?? "", className: c || defaultClass.trim(), phone: ph ?? "" };
     });
 }
 
@@ -167,12 +167,17 @@ export function writingBand(criteria: number[]): number | null {
   return frac < 0.25 ? base : frac < 0.75 ? base + 0.5 : base + 1;
 }
 
+/** The last two words of a name without accents: "Trần Bảo An" → "baoan". */
+export function lastTwoWords(name: string): string {
+  const words = noMarks(name).toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+  return words.slice(-2).join("").slice(0, 20);
+}
+
 /** Code from the last two words of the name + last 4 phone digits: "Trần Bảo An", 0912 344 821 → "baoan4821". */
 export function phoneCode(name: string, phone: unknown): string | null {
   const digits = String(phone ?? "").replace(/\D/g, "");
   if (digits.length < 4) return null;
-  const words = noMarks(name).toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim().split(/\s+/).filter(Boolean);
-  const base = words.slice(-2).join("").slice(0, 20);
+  const base = lastTwoWords(name);
   return base ? base + digits.slice(-4) : null;
 }
 

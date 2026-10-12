@@ -39,6 +39,9 @@ type Draft = {
   code: string;
   featured: boolean;
   ielts: "" | "listening" | "reading";
+  timer: "off" | "count" | "auto";
+  accent: "uk" | "us";
+  term: "" | "hk1" | "hk2";
   published: boolean;
   sections: ES[];
 };
@@ -132,6 +135,9 @@ function fromDoc(d: Doc<"quizzes"> & { imageUrls: Record<string, string> }): Dra
     code: d.code,
     featured: d.featured,
     ielts: d.ielts ?? "",
+    timer: d.timer ?? (d.minutes > 0 ? "count" : "off"),
+    accent: d.accent ?? "uk",
+    term: d.term ?? "",
     published: d.published,
     sections: fromSections(d.sections, d.imageUrls),
   };
@@ -164,7 +170,7 @@ export default function QuizEditor({ id }: { id: string }) {
     if (draft) return;
     if (isNew && folders) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDraft({ slug: "", folder: folders[0]?.slug ?? "", title: "", subtitle: "", minutes: 10, code: "", featured: false, ielts: "", published: true, sections: [blankS()] });
+      setDraft({ slug: "", folder: folders[0]?.slug ?? "", title: "", subtitle: "", minutes: 10, code: "", featured: false, ielts: "", published: true, timer: "count", accent: "uk", term: "", sections: [blankS()] });
     } else if (doc) setDraft(fromDoc(doc));
   }, [doc, folders, isNew, draft]);
 
@@ -210,6 +216,9 @@ export default function QuizEditor({ id }: { id: string }) {
         code: d.code,
         featured: d.featured,
         ielts: d.ielts || undefined,
+        timer: d.timer,
+        accent: d.accent,
+        term: d.term || undefined,
         published: d.published,
         sections,
       });
@@ -320,6 +329,35 @@ export default function QuizEditor({ id }: { id: string }) {
             </label>
             <input className="input mono" id="qz-slug" value={d.slug} onChange={(e) => update({ slug: e.target.value })} placeholder={slugify(d.title) || "gs8-unit-4"} autoCapitalize="off" spellCheck={false} />
           </div>
+        </div>
+        <div className="row-3">
+          <div className="field">
+            <label htmlFor="qz-timer">
+              Đếm giờ <span className="hint">(theo số phút ở trên)</span>
+            </label>
+            <select className="select" id="qz-timer" value={d.timer} onChange={(e) => update({ timer: e.target.value as Draft["timer"] })}>
+              <option value="count">Đếm ngược, hết giờ nhắc nộp</option>
+              <option value="auto">Đếm ngược, hết giờ tự nộp</option>
+              <option value="off">Không đếm giờ</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="qz-accent">Giọng đọc phần nghe</label>
+            <select className="select" id="qz-accent" value={d.accent} onChange={(e) => update({ accent: e.target.value as Draft["accent"] })}>
+              <option value="uk">🇬🇧 Anh (UK)</option>
+              <option value="us">🇺🇸 Mỹ (US)</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="qz-term">Học kỳ</label>
+            <select className="select" id="qz-term" value={d.term} onChange={(e) => update({ term: e.target.value as Draft["term"] })}>
+              <option value="">Không chia học kỳ</option>
+              <option value="hk1">Học kỳ 1</option>
+              <option value="hk2">Học kỳ 2</option>
+            </select>
+          </div>
+        </div>
+        <div className="row-3">
           <div className="field" style={{ justifyContent: "flex-end", gap: 10 }}>
             <label className="switch">
               <input type="checkbox" checked={d.published} onChange={(e) => update({ published: e.target.checked })} />

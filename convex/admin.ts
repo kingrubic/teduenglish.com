@@ -20,7 +20,7 @@ import {
   studentByCode,
   verifyPassword,
 } from "./lib";
-import { essayReviewValidator, ieltsValidator, resourceKindValidator, sectionValidator } from "./schema";
+import { accentValidator, essayReviewValidator, ieltsValidator, resourceKindValidator, sectionValidator, termValidator, timerValidator } from "./schema";
 import { MAX_PDF_BYTES, formatBytes, hasEssay, isCorrect, normCode, questionCount, slugify, validateSections, wordCount, writingBand } from "./model";
 
 const tokenArg = { token: v.string() };
@@ -143,6 +143,8 @@ async function attemptRow(ctx: { db: QueryCtx["db"] }, a: Doc<"attempts">) {
     band: a.band ?? null,
     submittedAt: a.submittedAt,
     reviewStatus: a.reviewStatus ?? null,
+    reopened: !!a.reopened,
+    durationSec: a.durationSec ?? null,
   };
 }
 
@@ -165,6 +167,7 @@ export const saveSettings = mutation({
     contact: v.string(),
     showDemoHint: v.boolean(),
     demoCode: v.string(),
+    lockAtPercent: v.number(),
   },
   handler: async (ctx, { token, ...data }) => {
     await requireAdmin(ctx, token);
@@ -175,6 +178,7 @@ export const saveSettings = mutation({
       contact: data.contact.trim(),
       showDemoHint: data.showDemoHint,
       demoCode: normCode(data.demoCode),
+      lockAtPercent: Math.max(0, Math.min(100, Math.round(data.lockAtPercent))),
       updatedAt: Date.now(),
     };
     if (clean.showDemoHint && clean.demoCode && !(await studentByCode(ctx, clean.demoCode)))
@@ -347,7 +351,8 @@ export const bulkCreateStudents = mutation({
   args: {
     token: v.string(),
     // `code` is optional: when given (e.g. name + phone digits) it must be free.
-    rows: v.array(v.object({ name: v.string(), className: v.string(), code: v.optional(v.string()) })),
+    // `style: "lastTwo"` makes random codes from the last two words of the name (baoan + 4 digits).
+    rows: v.array(v.object({ name: v.string(), className: v.string(), code: v.optional(v.string()), style: v.optional(v.literal("lastTwo")) })),
     folders: v.array(v.string()),
   },
   handler: async (ctx, args) => {
@@ -374,7 +379,7 @@ export const bulkCreateStudents = mutation({
           skipped.push({ name, className, reason: `Mã "${code}" đã dùng cho ${other.name}` });
           continue;
         }
-      } else code = await generateStudentCode(ctx, name);
+      } else code = await generateStudentCode(ctx, name, r.style ?? "first");
       await ctx.db.insert("students", { name, className, code, folders, active: true, note: "", createdAt: Date.now() });
       created.push({ name, className, code });
     }
@@ -471,6 +476,7 @@ export const saveResource = mutation({
     storageId: v.optional(v.id("_storage")),
     fileName: v.optional(v.string()),
     hidden: v.optional(v.boolean()),
+    term: termValidator,
   },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.token);
@@ -498,7 +504,7 @@ export const saveResource = mutation({
       fail("Chọn file PDF để tải lên.");
     }
 
-    const data = { folder: args.folder, kind: args.kind, title, description: args.description.trim(), url, ...(file ? { file } : {}), ...(args.hidden ? { hidden: true } : {}) };
+    const data = { folder: args.folder, kind: args.kind, title, description: args.description.trim(), url, ...(file ? { file } : {}), ...(args.hidden ? { hidden: true } : {}), ...(args.term ? { term: args.term } : {}) };
     if (prev) {
       if (prev.file && prev.file.storageId !== file?.storageId) await ctx.storage.delete(prev.file.storageId);
       await ctx.db.replace(prev._id, { ...data, order: prev.order });
@@ -564,6 +570,7 @@ export const quizzes = query({
           code: q.code,
           featured: q.featured,
           ielts: q.ielts ?? null,
+          term: q.term ?? null,
           published: q.published,
           questionCount: questionCount(q.sections),
           hasEssay: hasEssay(q.sections),
@@ -601,6 +608,9 @@ const quizFields = {
   featured: v.boolean(),
   ielts: ieltsValidator,
   published: v.boolean(),
+  timer: timerValidator,
+  accent: accentValidator,
+  term: termValidator,
   sections: v.array(sectionValidator),
 };
 
@@ -649,6 +659,9 @@ export const saveQuiz = mutation({
       featured: args.featured,
       ielts: args.ielts,
       published: args.published,
+      ...(args.timer ? { timer: args.timer } : {}),
+      ...(args.accent ? { accent: args.accent } : {}),
+      ...(args.term ? { term: args.term } : {}),
       sections,
       updatedAt: Date.now(),
     };
@@ -799,6 +812,18 @@ export const reviewAttempt = mutation({
     }
     if (!Object.keys(essayReviews).length) fail("Viết nhận xét hoặc chấm band trước khi lưu.");
     await ctx.db.patch(a._id, { essayReviews, reviewStatus: "done", reviewedAt: Date.now(), reviewedBy: admin.name });
+  },
+});
+
+/** Lets a student retake a quiz they had mastered; their scores are kept. */
+export const reopenQuiz = mutation({
+  args: { token: v.string(), studentId: v.id("students"), quizSlug: v.string() },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx, args.token);
+    const quiz = await quizBySlug(ctx, args.quizSlug);
+    if (!quiz) fail("Không tìm thấy bài.");
+    for (const a of await ctx.db.query("attempts").withIndex("by_student", (q) => q.eq("studentId", args.studentId)).collect())
+      if (a.quizId === quiz._id && !a.reopened) await ctx.db.patch(a._id, { reopened: true });
   },
 });
 

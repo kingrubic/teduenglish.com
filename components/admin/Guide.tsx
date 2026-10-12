@@ -272,8 +272,9 @@ export default function Guide() {
             <h3>Thêm cả lớp một lần</h3>
             <Note kind="tip">
               Có sẵn file Excel danh sách lớp? Chọn <b>Tải file Excel (.xlsx)</b>: hệ thống tự tìm cột <b>Họ và tên</b>, <b>Lớp</b>, <b>Số điện thoại</b> (kể cả file tách cột “Họ” và
-              “Tên”), hiện bảng xem trước, đánh dấu dòng trùng hoặc thiếu lớp. Có thể tạo mã theo mẫu <span className="m-code">2 chữ cuối của tên + 4 số cuối SĐT</span>, ví dụ “Trần
-              Bảo An”, SĐT …4821 → <span className="m-code">baoan4821</span>. File chỉ được đọc trên máy thầy cô; số điện thoại không được lưu lên hệ thống. Xong thì bấm{" "}
+              “Tên”), hiện bảng xem trước, đánh dấu dòng trùng hoặc thiếu lớp. File đã có cột mã (từ hệ thống cũ) thì chọn <b>Giữ mã có sẵn trong file</b>. Hoặc tạo mã kiểu{" "}
+              <span className="m-code">tên lót + tên + 4 số</span>: em có SĐT thì lấy 4 số cuối (“Trần Bảo An”, …4821 → <span className="m-code">baoan4821</span>), em không có SĐT thì 4 số
+              ngẫu nhiên. File chỉ được đọc trên máy thầy cô; số điện thoại không được lưu lên hệ thống. Xong thì bấm{" "}
               <b>Tải file Excel</b> để có danh sách mã.
             </Note>
             <div className="g-split">
@@ -507,6 +508,25 @@ export default function Guide() {
                   <span className="pin">👁</span>
                   <div>
                     <b>Hiện cho học sinh</b>: bỏ chọn để giữ bài ở dạng <b>bản nháp</b>, soạn dần rồi mới giao.
+                  </div>
+                </li>
+                <li>
+                  <span className="pin">⏱</span>
+                  <div>
+                    <b>Đếm giờ</b>: học sinh thấy đồng hồ đếm ngược theo số phút của bài. Chọn “hết giờ tự nộp” cho bài kiểm tra, hoặc “hết giờ nhắc nộp” cho bài luyện. Trang Kết quả ghi
+                    thời gian làm của từng em.
+                  </div>
+                </li>
+                <li>
+                  <span className="pin">🇬🇧</span>
+                  <div>
+                    <b>Giọng đọc</b>: chọn giọng Anh (UK) hoặc Mỹ (US) cho phần nghe; học sinh cũng tự đổi được khi nghe.
+                  </div>
+                </li>
+                <li>
+                  <span className="pin">HK</span>
+                  <div>
+                    <b>Học kỳ</b>: gắn bài (và tài liệu) vào Học kỳ 1 hoặc Học kỳ 2, trang học sinh tự chia thành hai nhóm trong mỗi thư mục.
                   </div>
                 </li>
                 <li>
@@ -845,6 +865,10 @@ const FAQ: [string, React.ReactNode][] = [
       Âm thanh được đọc bằng giọng tiếng Anh có sẵn trên máy của em. Nhắc em: tăng âm lượng, tắt chế độ im lặng, dùng Chrome hoặc Safari bản mới. Điện thoại Android thiếu giọng tiếng
       Anh thì cài thêm “Google Text-to-Speech” (Speech Services by Google) trên Play Store.
     </>,
+  ],
+  [
+    "Vì sao có bài bị mờ đi, học sinh không bấm vào được?",
+    "Bài trắc nghiệm, điền từ mà em làm đúng từ 80% trở lên sẽ tự khoá (mờ đi) để tránh cho bạn mượn tài khoản làm hộ hoặc chép đáp án. Đổi mức % hoặc tắt (đặt 0) ở Cài đặt & tài khoản. Muốn cho một em làm lại: vào Kết quả, bấm “🔓 Cho làm lại” ở dòng bài đó, điểm cũ vẫn giữ.",
   ],
   ["Em làm một bài nhiều lần thì tính điểm nào?", "Mọi lượt đều được lưu. Ở trang Kết quả, bật “Chỉ lần cao nhất” để xem điểm tốt nhất của mỗi em; tắt đi để xem cả quá trình."],
   ["Tôi muốn ẩn một bài tạm thời?", "Bài làm: mở bài, bỏ chọn “Hiện cho học sinh” rồi Lưu (thành bản nháp, điểm cũ vẫn còn). Tài liệu, PDF: bấm “Ẩn” trong danh sách, bấm “Hiện” để giao lại."],

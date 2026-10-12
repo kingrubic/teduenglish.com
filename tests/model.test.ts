@@ -67,10 +67,10 @@ describe("parseLoose", () => {
 describe("shared parsers", () => {
   it("reads pasted class lists", async () => {
     const { parseStudentLines } = await import("@/convex/model");
-    expect(parseStudentLines("Nguyễn Văn Bình, 8A2\n\nLê Hoàng Nam\nTrần Mai\t9A1", "7B")).toEqual([
-      { name: "Nguyễn Văn Bình", className: "8A2" },
-      { name: "Lê Hoàng Nam", className: "7B" },
-      { name: "Trần Mai", className: "9A1" },
+    expect(parseStudentLines("Nguyễn Văn Bình, 8A2\n\nLê Hoàng Nam\nTrần Mai\t9A1\t0912344821", "7B")).toEqual([
+      { name: "Nguyễn Văn Bình", className: "8A2", phone: "" },
+      { name: "Lê Hoàng Nam", className: "7B", phone: "" },
+      { name: "Trần Mai", className: "9A1", phone: "0912344821" },
     ]);
   });
 
@@ -118,16 +118,50 @@ describe("writing & class lists", () => {
       ["Tổng", "2 học sinh", null, null],
     ];
     const list = tableToClassList(table, "Sheet1");
-    expect(list.columns).toEqual({ name: "Họ và tên học sinh", className: "Tên lớp", phone: "Số điện thoại phụ huynh" });
+    expect(list.columns).toEqual({ name: "Họ và tên học sinh", className: "Tên lớp", phone: "Số điện thoại phụ huynh", code: null });
     expect(list.rows).toEqual([
-      { name: "Nguyễn Văn Bình", className: "9/14", phone: "0912344821" },
-      { name: "Trần Thị Mai", className: "", phone: "987654321" },
+      { name: "Nguyễn Văn Bình", className: "9/14", phone: "0912344821", code: "" },
+      { name: "Trần Thị Mai", className: "", phone: "987654321", code: "" },
     ]);
   });
 
   it("joins split Họ / Tên columns", async () => {
     const { tableToClassList } = await import("@/lib/excel");
     const list = tableToClassList([["Họ và tên đệm", "Tên", "Lớp"], ["Lê Hoàng", "Nam", "8A2"]]);
-    expect(list.rows).toEqual([{ name: "Lê Hoàng Nam", className: "8A2", phone: "" }]);
+    expect(list.rows).toEqual([{ name: "Lê Hoàng Nam", className: "8A2", phone: "", code: "" }]);
+  });
+
+  it("keeps an existing code column and spots phone numbers under any header", async () => {
+    const { tableToClassList } = await import("@/lib/excel");
+    const list = tableToClassList([
+      ["Mã học sinh", "Họ và tên học sinh", "Tên lớp", "Liên hệ PH"],
+      ["baoan4821", "Trần Bảo An", "Anh 10", "0912 344 821"],
+      ["mai0000", "Trần Thị Mai", "Anh 10", ""],
+    ]);
+    expect(list.columns).toEqual({ name: "Họ và tên học sinh", className: "Tên lớp", phone: "Liên hệ PH", code: "Mã học sinh" });
+    expect(list.rows[1]).toEqual({ name: "Trần Thị Mai", className: "Anh 10", phone: "", code: "mai0000" });
+    const guessed = tableToClassList([
+      ["Họ và tên", "Lớp", "Ghi chú"],
+      ["A B", "9", "0912344821"],
+      ["C D", "9", "0987654321"],
+    ]);
+    expect(guessed.columns.phone).toBe("Ghi chú");
+  });
+
+  it("makes last-two-words codes whether or not there is a phone", async () => {
+    const { lastTwoWords, phoneCode } = await import("@/convex/model");
+    expect(lastTwoWords("Trần Bảo An")).toBe("baoan");
+    expect(lastTwoWords("Minh")).toBe("minh");
+    expect(phoneCode("Trần Bảo An", "")).toBeNull(); // the server then adds 4 random digits
+  });
+
+  it("locks a quiz once the best non-reopened score reaches the threshold", async () => {
+    const { isMastered } = await import("@/convex/lib");
+    const a = (correct: number, total: number, reopened = false) => ({ correct, total, reopened }) as never;
+    expect(isMastered([a(7, 10), a(8, 10)], 80)).toBe(true);
+    expect(isMastered([a(7, 10)], 80)).toBe(false);
+    expect(isMastered([a(9, 10, true)], 80)).toBe(false);
+    expect(isMastered([a(10, 10)], 0)).toBe(false);
+    expect(isMastered([a(0, 0)], 80)).toBe(false);
   });
 });

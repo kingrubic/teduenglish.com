@@ -718,3 +718,22 @@ td code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospac
 .mw-review { border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 0 12px 12px 0; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
 .mw-band { font-family: var(--font-display); font-size: 1.1rem; color: var(--accent-ink); }
 .mw-comment { white-space: pre-wrap; line-height: 1.7; }
+
+/* Quizzes closed after reaching the lock threshold (anti account-sharing). */
+.quiz-btn.locked, .feature-card.locked { opacity: .5; cursor: not-allowed; filter: grayscale(.35); }
+.quiz-btn.locked:hover { background: var(--good-bg); border-color: var(--good-line); }
+.feature-card.locked:hover { border-color: var(--line-strong); }
+
+/* Countdown in the submit bar */
+.progress-row .timer { font-weight: 800; font-size: 0.95rem; color: var(--brand-ink); white-space: nowrap; padding: 2px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); }
+.progress-row .timer.warn { color: var(--accent-ink); background: var(--accent-soft); }
+.progress-row .timer.low, .progress-row .timer.over { color: var(--bad); background: var(--bad-bg); border-color: var(--bad-line); }
+.listen-controls .speed + .speed { margin-left: 2px; }
+
+/* Semester groups inside a folder */
+.term-group { display: flex; flex-direction: column; gap: 8px; }
+.term-group + .term-group { margin-top: 6px; }
+.term-head { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-ink); padding-top: 4px; border-top: 1px dashed var(--line-strong); }
+.term-group:first-of-type .term-head { border-top: 0; padding-top: 0; }
+.mw-criteria { display: flex; flex-wrap: wrap; gap: 6px; }
+.mw-criteria span { font-size: 0.8rem; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }

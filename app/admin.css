@@ -132,3 +132,16 @@ td .sub { display: block; font-size: 0.78rem; color: var(--muted); }
 .criteria-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; }
 .overall-band { font-family: var(--font-display); font-size: 1.8rem; color: var(--accent-ink); line-height: 1.2; }
 .state-low { color: var(--bad); font-weight: 700; }
+
+.mode-picks { display: grid; gap: 8px; grid-template-columns: 1fr; }
+@container site (min-width: 760px) { .mode-picks { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.mode-pick {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 11px 13px; border-radius: 14px; cursor: pointer;
+  border: 1.5px solid var(--line-strong); background: var(--surface);
+}
+.mode-pick input { margin-top: 3px; accent-color: var(--accent); flex-shrink: 0; }
+.mode-pick > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mode-pick b { font-size: 0.9rem; }
+.mode-pick.on { border-color: var(--accent); background: var(--accent-soft); }
+.mode-pick.off { opacity: .6; cursor: not-allowed; }

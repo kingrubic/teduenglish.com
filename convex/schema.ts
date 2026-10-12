@@ -34,6 +34,10 @@ export const ieltsValidator = v.optional(
   v.union(v.literal("listening"), v.literal("reading")),
 );
 
+export const termValidator = v.optional(v.union(v.literal("hk1"), v.literal("hk2")));
+export const timerValidator = v.optional(v.union(v.literal("off"), v.literal("count"), v.literal("auto")));
+export const accentValidator = v.optional(v.union(v.literal("uk"), v.literal("us")));
+
 export const resourceKindValidator = v.union(
   v.literal("exercise"),
   v.literal("game"),
@@ -50,6 +54,8 @@ export default defineSchema({
     contact: v.string(),
     showDemoHint: v.boolean(),
     demoCode: v.string(),
+    // Lock a quiz for a student once their best score reaches this %; 0 turns it off (default 80).
+    lockAtPercent: v.optional(v.number()),
     updatedAt: v.number(),
   }),
 
@@ -91,6 +97,7 @@ export default defineSchema({
     url: v.string(), // "" when the resource is an uploaded file
     file: v.optional(v.object({ storageId: v.id("_storage"), name: v.string(), size: v.number() })),
     hidden: v.optional(v.boolean()),
+    term: termValidator,
     order: v.number(),
   }).index("by_folder", ["folder"]),
 
@@ -104,6 +111,10 @@ export default defineSchema({
     featured: v.boolean(),
     ielts: ieltsValidator,
     published: v.boolean(),
+    // "count": countdown only; "auto": submit when time is up. Unset → "count" when minutes > 0.
+    timer: timerValidator,
+    accent: accentValidator, // listening voice, default "uk"
+    term: termValidator, // semester group inside the folder
     order: v.number(),
     sections: v.array(sectionValidator),
     updatedAt: v.number(),
@@ -126,8 +137,11 @@ export default defineSchema({
     band: v.optional(v.number()),
     answers: v.record(v.string(), v.union(v.string(), v.number())),
     submittedAt: v.number(),
+    durationSec: v.optional(v.number()),
     // Only for attempts that contain essays.
     reviewStatus: v.optional(v.union(v.literal("pending"), v.literal("done"))),
+    // Set when a teacher lets the student retake a quiz they had mastered.
+    reopened: v.optional(v.boolean()),
     essayReviews: v.optional(v.record(v.string(), essayReviewValidator)),
     reviewedAt: v.optional(v.number()),
     reviewedBy: v.optional(v.string()),

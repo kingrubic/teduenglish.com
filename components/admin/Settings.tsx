@@ -88,6 +88,29 @@ function CenterSettings() {
           </label>
           <input className="input" id="st-contact" value={form.contact} onChange={(e) => set({ contact: e.target.value })} placeholder="Zalo lớp: 09xx xxx xxx" />
         </div>
+        <div className="field">
+          <label htmlFor="st-lock">
+            Khoá bài khi học sinh đạt từ <span className="hint">(chống cho mượn tài khoản; 0 = tắt)</span>
+          </label>
+          <div className="row-actions" style={{ alignItems: "center" }}>
+            <input
+              className="input"
+              id="st-lock"
+              type="number"
+              min={0}
+              max={100}
+              style={{ width: 110 }}
+              value={form.lockAtPercent}
+              onChange={(e) => set({ lockAtPercent: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+            />
+            <b>%</b>
+          </div>
+          <span className="tiny muted">
+            {form.lockAtPercent > 0
+              ? `Bài trắc nghiệm, điền từ mà học sinh làm đúng từ ${form.lockAtPercent}% sẽ mờ đi và không mở lại được. Giáo viên mở lại bằng nút “Cho làm lại” ở trang Kết quả.`
+              : "Đang tắt: học sinh làm lại bao nhiêu lần cũng được."}
+          </span>
+        </div>
         <label className="switch">
           <input type="checkbox" checked={form.showDemoHint} onChange={(e) => set({ showDemoHint: e.target.checked })} />
           Hiện mã dùng thử trên trang chủ

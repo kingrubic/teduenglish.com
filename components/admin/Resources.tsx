@@ -106,6 +106,7 @@ export default function Resources() {
                     <td>
                       <span className="tag">{KIND[r.kind]}</span>
                       {r.file && <span className="tag">PDF</span>}
+                      {r.term && <span className="tag">{r.term === "hk1" ? "HK1" : "HK2"}</span>}
                       {r.hidden ? <span className="status draft">Đang ẩn</span> : <span className="status on">Đang hiện</span>}
                     </td>
                     <td>
@@ -184,6 +185,7 @@ function ResourceForm({
   const [url, setUrl] = useState(res?.url ?? "");
   const [description, setDescription] = useState(res?.description ?? "");
   const [hidden, setHiddenField] = useState(!!res?.hidden);
+  const [term, setTerm] = useState<"" | "hk1" | "hk2">(res?.term ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [err, setErr] = useState("");
@@ -207,7 +209,7 @@ function ResourceForm({
         setProgress(0);
         storageId = await uploadPdf(await getUploadUrl({ token }), file, setProgress);
       }
-      await save({ token, id: res?._id, folder, kind, title, description, source, url, storageId, fileName: file?.name, hidden });
+      await save({ token, id: res?._id, folder, kind, title, description, source, url, storageId, fileName: file?.name, hidden, term: term || undefined });
       toast(res ? "Đã lưu tài liệu." : "Đã thêm tài liệu.");
       onClose();
     } catch (e2) {
@@ -274,6 +276,14 @@ function ResourceForm({
             <input className="input" id="r-url" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://wordwall.net/…" />
           </div>
         )}
+        <div className="field">
+          <label htmlFor="r-term">Học kỳ</label>
+          <select className="select" id="r-term" value={term} onChange={(e) => setTerm(e.target.value as "" | "hk1" | "hk2")}>
+            <option value="">Không chia học kỳ</option>
+            <option value="hk1">Học kỳ 1</option>
+            <option value="hk2">Học kỳ 2</option>
+          </select>
+        </div>
         <div className="field">
           <label htmlFor="r-title">Tên tài liệu</label>
           <input className="input" id="r-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Unit 4 · Worksheet" />

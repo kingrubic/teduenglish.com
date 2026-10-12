@@ -25,6 +25,9 @@ export default function Results() {
   const quizzes = useQuery(api.admin.quizzes, { token });
   const students = useQuery(api.admin.students, { token });
   const del = useMutation(api.admin.deleteAttempt);
+  const reopen = useMutation(api.admin.reopenQuiz);
+  const settings = useQuery(api.admin.settings, { token });
+  const lockAt = settings?.lockAtPercent ?? 0;
   const [cls, setCls] = useState("");
   const [bestOnly, setBestOnly] = useState(false);
   const [detail, setDetail] = useState<Id<"attempts"> | null>(null);
@@ -146,7 +149,10 @@ export default function Results() {
                 const pct = r.total ? Math.round((r.correct / r.total) * 100) : 0;
                 return (
                   <tr key={r.id}>
-                    <td className="tiny">{stamp(r.submittedAt)}</td>
+                    <td className="tiny">
+                      {stamp(r.submittedAt)}
+                      {r.durationSec != null && <span className="sub">⏱ làm {fmtDuration(r.durationSec)}</span>}
+                    </td>
                     <td>
                       <b>{r.studentName}</b>
                       <span className="sub">{r.className}</span>
@@ -164,6 +170,7 @@ export default function Results() {
                       {r.total > 0 && r.unanswered > 0 && <span className="sub">{r.unanswered} câu bỏ trống</span>}
                       {r.reviewStatus === "pending" && <span className="status draft">✍️ Chờ nhận xét</span>}
                       {r.reviewStatus === "done" && <span className="status on">✍️ Đã nhận xét</span>}
+                      {lockAt > 0 && r.total > 0 && !r.reopened && (r.correct / r.total) * 100 >= lockAt && <span className="sub">🔒 Đã khoá bài</span>}
                     </td>
                     <td style={{ minWidth: 110 }}>
                       {r.total > 0 && (
@@ -180,6 +187,19 @@ export default function Results() {
                         <button className="link-btn" type="button" onClick={() => setDetail(r.id)}>
                           {r.reviewStatus === "pending" ? "Chấm bài viết" : "Chi tiết"}
                         </button>
+                        {lockAt > 0 && r.total > 0 && !r.reopened && (r.correct / r.total) * 100 >= lockAt && (
+                          <button
+                            className="link-btn"
+                            type="button"
+                            title={`Bài đã khoá vì đạt từ ${lockAt}%`}
+                            onClick={() => {
+                              if (confirm(`Cho ${r.studentName} làm lại “${r.quizTitle}”? Điểm cũ vẫn được giữ.`))
+                                run(() => reopen({ token, studentId: r.studentId, quizSlug: r.quizId }), "Đã mở lại bài cho học sinh.");
+                            }}
+                          >
+                            🔓 Cho làm lại
+                          </button>
+                        )}
                         <button
                           className="link-btn danger"
                           type="button"
@@ -279,7 +299,8 @@ function EssayReview({ attempt, onDone }: { attempt: Detail; onDone: () => void 
         {
           comment: e.review?.comment ?? "",
           band: e.review?.band != null && !e.review.criteria ? e.review.band.toFixed(1) : "",
-          useCriteria: !!e.review?.criteria,
+          // IELTS criteria by default; an older plain-band review keeps its own mode.
+          useCriteria: e.review ? !!e.review.criteria : true,
           criteria: e.review?.criteria?.map((c) => c.toFixed(1)) ?? ["", "", "", ""],
         },
       ]),
@@ -408,4 +429,10 @@ function EssayReview({ attempt, onDone }: { attempt: Detail; onDone: () => void 
       </div>
     </div>
   );
+}
+
+function fmtDuration(sec: number) {
+  const m = Math.floor(sec / 60);
+  const ss = Math.round(sec % 60);
+  return m >= 60 ? `${Math.floor(m / 60)} giờ ${m % 60} phút` : m ? `${m} phút ${ss} giây` : `${ss} giây`;
 }

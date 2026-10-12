@@ -90,6 +90,7 @@ export default function Quizzes() {
                     {x.featured && <span className="sub">★ Nổi bật</span>}
                     {x.ielts && <span className="sub">IELTS {x.ielts === "listening" ? "Listening" : "Reading"}</span>}
                     {x.hasEssay && <span className="sub">✍️ Có bài viết</span>}
+                    {x.term && <span className="sub">{x.term === "hk1" ? "Học kỳ 1" : "Học kỳ 2"}</span>}
                   </td>
                   <td className="num">
                     {x.attemptCount ? <Link href={`/admin/ket-qua?quiz=${x._id}`}>{x.attemptCount}</Link> : 0}

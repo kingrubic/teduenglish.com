@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { api } from "@/convex/_generated/api";
 import { signalReady } from "@/lib/ui";
-import { GateLogin, GateNoAccess, Loading, Missing, QuizButton, ResourceRowLink, Swoosh } from "./parts";
+import { GateLogin, GateNoAccess, Loading, Missing, QuizButton, ResourceRowLink, Swoosh, TERM_LABEL, byTerm } from "./parts";
 import { useSite } from "./SiteShell";
 
 export default function FolderView({ id }: { id: string }) {
@@ -45,11 +45,16 @@ export default function FolderView({ id }: { id: string }) {
               <h2>Bài luyện tập</h2>
             </div>
             {data.quizzes.length ? (
-              <div className="quiz-list">
-                {data.quizzes.map((q) => (
-                  <QuizButton key={q.id} quiz={q} done={data.done} />
-                ))}
-              </div>
+              byTerm(data.quizzes).map(([term, list], _, all) => (
+                <div className="term-group" key={term ?? "all"}>
+                  {(all.length > 1 || term) && <p className="term-head">{term ? TERM_LABEL[term] : "Bài chung"}</p>}
+                  <div className="quiz-list">
+                    {list.map((q) => (
+                      <QuizButton key={q.id} quiz={q} done={data.done} />
+                    ))}
+                  </div>
+                </div>
+              ))
             ) : (
               <p className="empty">Chưa có bài làm trên web trong thư mục này.</p>
             )}
@@ -60,11 +65,16 @@ export default function FolderView({ id }: { id: string }) {
               <h2>Tài liệu &amp; liên kết</h2>
             </div>
             {data.resources.length ? (
-              <div className="res-list">
-                {data.resources.map((r) => (
-                  <ResourceRowLink key={r.id} r={r} />
-                ))}
-              </div>
+              byTerm(data.resources).map(([term, list], _, all) => (
+                <div className="term-group" key={term ?? "all"}>
+                  {(all.length > 1 || term) && <p className="term-head">{term ? TERM_LABEL[term] : "Tài liệu chung"}</p>}
+                  <div className="res-list">
+                    {list.map((r) => (
+                      <ResourceRowLink key={r.id} r={r} />
+                    ))}
+                  </div>
+                </div>
+              ))
             ) : (
               <p className="empty">Chưa có tài liệu nào được thêm.</p>
             )}

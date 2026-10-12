@@ -115,6 +115,17 @@ function Dashboard({ home }: { home: HomeData }) {
         <div className="featured">
           {featured.map((q) => {
             const rec = done[q.id];
+            if (rec?.locked)
+              return (
+                <div key={q.id} className="feature-card locked" aria-disabled="true">
+                  <div className="ft-text">
+                    <p className="eyebrow">{folderName(q.folder)}</p>
+                    <h3>{q.title}</h3>
+                    <p>Em đã hoàn thành bài này · {doneLabel(rec)}</p>
+                  </div>
+                  <span className="btn btn-ghost go">✓ Hoàn thành</span>
+                </div>
+              );
             return (
               <Link key={q.id} className="feature-card" href={`/bai/${q.id}`}>
                 <div className="ft-text">

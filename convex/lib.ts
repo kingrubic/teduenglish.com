@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { firstName, hasEssay, noMarks, normCode, questionCount } from "./model";
+import { firstName, hasEssay, lastTwoWords, noMarks, normCode, questionCount } from "./model";
 
 export const STUDENT_SESSION_MS = 180 * 24 * 60 * 60 * 1000;
 export const ADMIN_SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -120,6 +120,7 @@ export async function getSettings(ctx: Ctx) {
     contact: row?.contact ?? "",
     showDemoHint: row?.showDemoHint ?? false,
     demoCode: row?.demoCode ?? "",
+    lockAtPercent: row?.lockAtPercent ?? 80,
   };
 }
 
@@ -154,6 +155,9 @@ export function quizMeta(quiz: Doc<"quizzes">) {
     ielts: quiz.ielts ?? null,
     questionCount: questionCount(quiz.sections),
     hasEssay: hasEssay(quiz.sections),
+    timer: quiz.timer ?? (quiz.minutes > 0 ? "count" : "off"),
+    accent: quiz.accent ?? "uk",
+    term: quiz.term ?? null,
   };
 }
 
@@ -202,9 +206,21 @@ export type DoneRecord = {
   count: number;
   /** Essay marking state of the latest attempt with writing, if any. */
   review: "pending" | "done" | null;
+  /** Best score reached the lock threshold: the quiz is closed for this student. */
+  locked: boolean;
 };
 
-export async function doneMapFor(ctx: Ctx, studentId: Id<"students">) {
+/** True when the student's best (non-reopened) auto-graded score reaches the threshold. */
+export function isMastered(attempts: Doc<"attempts">[], lockAtPercent: number): boolean {
+  if (lockAtPercent <= 0) return false;
+  return attempts.some((a) => !a.reopened && a.total > 0 && (a.correct / a.total) * 100 >= lockAtPercent);
+}
+
+export async function studentQuizAttempts(ctx: Ctx, studentId: Id<"students">, quizId: Id<"quizzes">) {
+  return (await ctx.db.query("attempts").withIndex("by_student", (q) => q.eq("studentId", studentId)).collect()).filter((a) => a.quizId === quizId);
+}
+
+export async function doneMapFor(ctx: Ctx, studentId: Id<"students">, lockAtPercent: number) {
   const attempts = await ctx.db
     .query("attempts")
     .withIndex("by_student", (q) => q.eq("studentId", studentId))
@@ -224,6 +240,7 @@ export async function doneMapFor(ctx: Ctx, studentId: Id<"students">) {
       at: a.submittedAt,
       count: (prev?.count ?? 0) + 1,
       review: a.reviewStatus ?? prev?.review ?? null,
+      locked: (prev?.locked ?? false) || isMastered([a], lockAtPercent),
     };
   }
   return map;
@@ -238,6 +255,7 @@ export async function studentResource(ctx: Ctx, r: Doc<"resources">) {
     title: r.title,
     description: r.description,
     url: r.url,
+    term: r.term ?? null,
     file: r.file ? { name: r.file.name, size: r.file.size, url: await ctx.storage.getUrl(r.file.storageId) } : null,
   };
 }
@@ -256,9 +274,9 @@ export async function folderBySlug(ctx: Ctx, slug: string) {
     .unique();
 }
 
-/** Random readable student code: first name without accents + 4 digits. */
-export async function generateStudentCode(ctx: Ctx, name: string) {
-  const base = noMarks(firstName(name)).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10) || "hs";
+/** Random readable code: first name (or the last two words of the name) + 4 digits. */
+export async function generateStudentCode(ctx: Ctx, name: string, style: "first" | "lastTwo" = "first") {
+  const base = (style === "lastTwo" ? lastTwoWords(name) : noMarks(firstName(name)).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10)) || "hs";
   for (let i = 0; i < 50; i++) {
     const code = base + String(Math.floor(1000 + Math.random() * 9000));
     if (!(await studentByCode(ctx, code))) return code;

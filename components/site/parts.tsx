@@ -109,6 +109,13 @@ export function doneLabel(rec: DoneMap[string]): string {
 
 export function QuizButton({ quiz, done }: { quiz: QuizMeta; done: DoneMap }) {
   const rec = done[quiz.id];
+  if (rec?.locked)
+    return (
+      <span className="quiz-btn done locked" aria-disabled="true" title="Em đã hoàn thành bài này, bài đã được khoá">
+        <span className="q-title">✓ {quiz.title}</span>
+        <span className="q-meta">Hoàn thành · {doneLabel(rec)}</span>
+      </span>
+    );
   return (
     <Link className={`quiz-btn${rec ? " done" : ""}`} href={`/bai/${quiz.id}`}>
       <span className="q-title">
@@ -167,6 +174,21 @@ export function ResourceRowLink({ r }: { r: ResourceRow }) {
   );
 }
 
+export const TERM_LABEL: Record<string, string> = { hk1: "Học kỳ 1", hk2: "Học kỳ 2" };
+
+/** Splits items into Học kỳ 1 / Học kỳ 2 / the rest; a single unlabeled group when nothing has a term. */
+export function byTerm<T extends { term: string | null }>(items: T[]): [string | null, T[]][] {
+  if (!items.some((i) => i.term)) return [[null, items]];
+  return (["hk1", "hk2", null] as (string | null)[])
+    .map((t): [string | null, T[]] => [t, items.filter((i) => (i.term ?? null) === t)])
+    .filter(([, list]) => list.length > 0);
+}
+
+function TermHead({ term, grouped }: { term: string | null; grouped: boolean }) {
+  if (!grouped) return null;
+  return <p className="term-head">{term ? TERM_LABEL[term] : "Bài chung"}</p>;
+}
+
 export function FolderCard({ f, tone, quizzes, resources, done }: { f: FolderInfo; tone: number; quizzes: QuizMeta[]; resources: ResourceRow[]; done: DoneMap }) {
   const total = quizzes.length + resources.length;
   return (
@@ -183,20 +205,21 @@ export function FolderCard({ f, tone, quizzes, resources, done }: { f: FolderInf
         </div>
         <span className="count-chip">{total} bài</span>
       </div>
-      {quizzes.length > 0 && (
-        <div className="quiz-list">
-          {quizzes.map((q) => (
-            <QuizButton key={q.id} quiz={q} done={done} />
-          ))}
+      {byTerm([...quizzes.map((q) => ({ term: q.term, quiz: q })), ...resources.map((r) => ({ term: r.term, res: r }))]).map(([term, items], _, all) => (
+        <div className="term-group" key={term ?? "all"}>
+          <TermHead term={term} grouped={all.length > 1 || term != null} />
+          {items.some((i) => "quiz" in i) && (
+            <div className="quiz-list">
+              {items.flatMap((i) => ("quiz" in i && i.quiz ? [<QuizButton key={i.quiz.id} quiz={i.quiz} done={done} />] : []))}
+            </div>
+          )}
+          {items.some((i) => "res" in i) && (
+            <div className="res-list">
+              {items.flatMap((i) => ("res" in i && i.res ? [<ResourceRowLink key={i.res.id} r={i.res} />] : []))}
+            </div>
+          )}
         </div>
-      )}
-      {resources.length > 0 && (
-        <div className="res-list">
-          {resources.map((r) => (
-            <ResourceRowLink key={r.id} r={r} />
-          ))}
-        </div>
-      )}
+      ))}
       {!total && <p className="empty">Chưa có bài được giao trong thư mục này.</p>}
     </article>
   );

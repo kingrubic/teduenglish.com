@@ -27,6 +27,10 @@ export const DONE: { area: string; icon: string; items: string[] }[] = [
       "Làm lại với câu hỏi xáo trộn; bài đang làm được lưu nháp",
       "Tài liệu PDF: xem ngay trên web (chia đôi màn hình) hoặc tải về",
       "Bài viết (IELTS Writing): viết trên web, đếm từ, xem nhận xét của thầy",
+      "Đếm giờ làm bài; bài nào cài “tự nộp” thì hết giờ tự nộp",
+      "Phần nghe chọn được giọng Anh (UK) hoặc Mỹ (US)",
+      "Bài và tài liệu chia theo Học kỳ 1 / Học kỳ 2 trong mỗi thư mục",
+      "Bài đạt từ 80% mờ đi, không làm lại được (chống cho mượn tài khoản)",
       "Dùng tốt trên điện thoại",
     ],
   },
@@ -35,14 +39,16 @@ export const DONE: { area: string; icon: string; items: string[] }[] = [
     icon: "🧑‍🏫",
     items: [
       "Tài khoản riêng cho từng giáo viên (quản trị chính / giáo viên)",
-      "Học sinh: thêm từng em, dán danh sách, tải file Excel, tạo mã theo tên + số điện thoại",
+      "Học sinh: thêm từng em, dán danh sách, tải file Excel; giữ mã có sẵn trong file hoặc tạo mã tên lót + tên + 4 số (dùng 4 số cuối SĐT nếu có)",
+      "Khoá bài khi học sinh đạt từ 80% (chỉnh được %), giáo viên mở lại bằng nút “Cho làm lại”",
       "Khóa mã, đổi mã, mở thư mục cho cả lớp một lần",
       "Thư mục bài học: thêm, sửa, sắp xếp",
       "Trình soạn bài: trắc nghiệm, điền từ, bài viết, phần nghe, phần đọc, ảnh minh hoạ, mẫu IELTS Writing, nhập từ data.js/JSON",
       "Xem trước bài như học sinh (không cần mã, không lưu điểm)",
       "Tài liệu & PDF: tải lên, ẩn/hiện, sắp xếp",
       "Kết quả: lọc theo lớp/bài/học sinh, xem từng câu, tải Excel",
-      "Chấm bài viết: nhận xét + band, hoặc 4 tiêu chí IELTS tự tính band tổng",
+      "Chấm bài viết theo 4 tiêu chí IELTS (mặc định), học sinh thấy band từng tiêu chí",
+      "Kết quả ghi thời gian làm bài của từng em",
       "Trang hướng dẫn sử dụng có hình minh hoạ",
     ],
   },
@@ -56,17 +62,24 @@ export const DONE: { area: string; icon: string; items: string[] }[] = [
       "Bắt đổi mật khẩu tạm ở lần đăng nhập đầu",
     ],
   },
+  {
+    area: "Đã chốt theo ý thầy",
+    icon: "🤝",
+    items: [
+      "Mã học sinh: tên lót + tên + 4 số cuối điện thoại (không có SĐT thì 4 số ngẫu nhiên); tra lại được",
+      "Không cần mã bài theo khối / xoay vòng mã (mỗi em một khối)",
+      "Phần nghe dùng giọng đọc của máy (Anh hoặc Mỹ), không cần MP3",
+      "Không cần AI (thầy đã có trợ giảng)",
+      "Chia nội dung theo Học kỳ 1 / Học kỳ 2 thay cho phân quyền theo Unit",
+    ],
+  },
 ];
 
 export const NOT_DONE: { title: string; note: string; question: string }[] = [
-  { title: "Phân quyền theo Unit / lớp cho từng bài", note: "Hiện mở theo cả thư mục.", question: "unit-permissions" },
-  { title: "Mã bài theo khối có xoay vòng / hết hạn", note: "Hiện đổi mã bài không khoá lại em đã mở.", question: "rotating-codes" },
-  { title: "Open cloze có chỗ trống trong đoạn văn, rút đề ngẫu nhiên", note: "Hiện làm gần tương tự bằng các dạng câu sẵn có.", question: "chuyen-anh-formats" },
-  { title: "Đếm giờ và tự nộp khi hết giờ", note: "Hiện thời gian chỉ là gợi ý.", question: "timer" },
-  { title: "Band Writing tổng của cả bài (Task 2 tính gấp đôi)", note: "Hiện chấm band riêng từng Task.", question: "writing-scoring" },
-  { title: "Phần nghe dùng file MP3 thật", note: "Hiện dùng giọng đọc của máy.", question: "audio" },
-  { title: "Nhập các bộ đề dài của thầy (GS8, Chuyên Anh, IELTS 2 bộ)", note: "Đang chờ file đề.", question: "content" },
-  { title: "Tính năng AI", note: "Bản demo chỉ có khung trống, chưa chạy thật.", question: "ai" },
+  { title: "Dạng đề Chuyên Anh: open cloze trong đoạn văn, tìm lỗi sai…", note: "Chờ thầy gửi định dạng & nguồn đề.", question: "chuyen-anh-formats" },
+  { title: "Kiểm tra với file danh sách lớp thật", note: "Chưa nhận được file thầy đính kèm.", question: "excel-sample" },
+  { title: "Tên hiển thị trên web", note: "Thầy chưa chốt: “TEDU English” hay “Toàn English Lab”.", question: "brand" },
+  { title: "Lưu số điện thoại phụ huynh", note: "Thầy chưa chốt có lưu hay không.", question: "store-phone" },
 ];
 
 export const QUESTIONS: ClarifyQuestion[] = [

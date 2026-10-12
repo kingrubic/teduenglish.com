@@ -17,6 +17,8 @@ import {
   studentByCode,
   studentFromToken,
   studentResource,
+  isMastered,
+  studentQuizAttempts,
 } from "./lib";
 import { MAX_ESSAY_CHARS, bandFor, grade, hasEssay, isAnswered, isCorrect, normCode, wordCount, type Answers } from "./model";
 
@@ -63,7 +65,7 @@ export const home = query({
         openFolders: open,
         quizzes,
         resources: await Promise.all(resources.map((r) => studentResource(ctx, r))),
-        done: await doneMapFor(ctx, student._id),
+        done: await doneMapFor(ctx, student._id, settings.lockAtPercent),
       },
     };
   },
@@ -89,7 +91,7 @@ export const folder = query({
       status: "ok" as const,
       quizzes: quizzes.map(quizMeta),
       resources: await Promise.all(resources.map((r) => studentResource(ctx, r))),
-      done: await doneMapFor(ctx, student._id),
+      done: await doneMapFor(ctx, student._id, (await getSettings(ctx)).lockAtPercent),
     };
   },
 });
@@ -118,7 +120,8 @@ export const quiz = query({
     const quiz = await quizBySlug(ctx, args.id);
     if (!quiz) return null;
     const f = await folderBySlug(ctx, quiz.folder);
-    const meta = { ...quizMeta(quiz), folderName: f?.name ?? "", published: quiz.published };
+    const { lockAtPercent } = await getSettings(ctx);
+    const meta = { ...quizMeta(quiz), folderName: f?.name ?? "", published: quiz.published, lockAtPercent };
     const student = await studentFromToken(ctx, args.token);
     if (!student || !canOpen(student, quiz.folder) || !quiz.published) {
       if (await previewAdmin(ctx, args.adminToken)) return { meta, status: "ok" as const, preview: true, sections: await publicSections(ctx, quiz) };
@@ -126,6 +129,11 @@ export const quiz = query({
     if (!quiz.published) return null;
     if (!student) return { meta, status: "login" as const };
     if (!canOpen(student, quiz.folder)) return { meta, status: "noaccess" as const };
+    const mine = await studentQuizAttempts(ctx, student._id, quiz._id);
+    if (isMastered(mine, lockAtPercent)) {
+      const best = mine.filter((a) => !a.reopened && a.total > 0).sort((a, b) => b.correct / b.total - a.correct / a.total)[0];
+      return { meta, status: "mastered" as const, best: { correct: best.correct, total: best.total, at: best.submittedAt } };
+    }
     if (quiz.code) {
       const unlocked = await ctx.db
         .query("quizUnlocks")
@@ -242,6 +250,7 @@ export const submit = mutation({
     adminToken: v.optional(v.string()),
     id: v.string(),
     answers: v.record(v.string(), v.union(v.string(), v.number())),
+    durationSec: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const quiz = await quizBySlug(ctx, args.id);
@@ -251,6 +260,9 @@ export const submit = mutation({
     // Teacher preview: graded the same way, but nothing is saved.
     const preview = !studentMayTake && !!(await previewAdmin(ctx, args.adminToken));
     if (!studentMayTake && !preview) fail(student ? "Không tìm thấy bài này." : "Phiên đăng nhập đã hết hạn, em đăng nhập lại để nộp bài.");
+    const { lockAtPercent } = await getSettings(ctx);
+    if (!preview && isMastered(await studentQuizAttempts(ctx, student!._id, quiz._id), lockAtPercent))
+      fail(`Em đã hoàn thành bài này từ ${lockAtPercent}% trở lên nên bài đã được khoá.`);
     if (!preview && quiz.code) {
       const unlocked = await ctx.db
         .query("quizUnlocks")
@@ -283,6 +295,7 @@ export const submit = mutation({
         band: band ?? undefined,
         answers,
         submittedAt: now,
+        ...(args.durationSec != null ? { durationSec: Math.max(0, Math.min(86_400, Math.round(args.durationSec))) } : {}),
         ...(wroteEssay ? { reviewStatus: "pending" as const } : {}),
       });
       await ctx.db.patch(student!._id, { lastSeenAt: now });

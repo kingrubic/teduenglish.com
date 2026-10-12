@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Answers } from "@/convex/model";
-import { normAnswer, parseDialogue, wordCount } from "@/convex/model";
+import { WRITING_CRITERIA, normAnswer, parseDialogue, wordCount } from "@/convex/model";
 import { Rich, copyText, errMsg, sdel, sget, shuffle, signalReady, sset, stamp } from "@/lib/ui";
 import { GateLogin, GateNoAccess, Loading, Missing, Swoosh } from "./parts";
 import { useSite } from "./SiteShell";
@@ -24,11 +24,20 @@ type Attempt = {
   answers: Answers;
   submitted: boolean;
   outcome?: Submitted;
+  /** When this sitting started (drives the countdown; survives reloads via the draft). */
+  startedAt: number;
 };
 
 export default function QuizView({ id }: { id: string }) {
   const { token, adminToken, teacher } = useSite();
-  const data = useQuery(api.site.quiz, token === undefined ? "skip" : { token: token ?? undefined, adminToken: adminToken ?? undefined, id });
+  const live = useQuery(api.site.quiz, token === undefined ? "skip" : { token: token ?? undefined, adminToken: adminToken ?? undefined, id });
+  // Submitting a winning attempt flips the quiz to "mastered"; keep showing this sitting's result.
+  const [sitting, setSitting] = useState<OkQuiz | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (live?.status === "ok") setSitting(live);
+  }, [live]);
+  const data = live?.status === "mastered" && sitting ? sitting : live;
 
   useEffect(() => {
     if (data !== undefined) signalReady();
@@ -54,7 +63,7 @@ export default function QuizView({ id }: { id: string }) {
         {m.subtitle && <p>{m.subtitle}</p>}
         <div className="banner-meta">
           <span>{m.questionCount} câu</span>
-          {m.minutes > 0 && <span>Khoảng {m.minutes} phút</span>}
+          {m.minutes > 0 && <span>{m.timer === "off" ? `Khoảng ${m.minutes} phút` : `⏱ ${m.minutes} phút${m.timer === "auto" ? " · tự nộp khi hết giờ" : ""}`}</span>}
           {m.hasEssay ? <span>Có bài viết · {teacher} nhận xét</span> : <span>Chấm tự động</span>}
           {m.ielts && <span>Band tham khảo</span>}
         </div>
@@ -62,6 +71,22 @@ export default function QuizView({ id }: { id: string }) {
       {data.status === "login" && <GateLogin title="Đăng nhập để làm bài" note="Nhập mã cá nhân trước, sau đó em sẽ vào thẳng bài này." />}
       {data.status === "noaccess" && <GateNoAccess name={m.folderName} />}
       {data.status === "locked" && <UnlockGate meta={m} />}
+      {data.status === "mastered" && (
+        <section className="gate">
+          <div>
+            <p className="eyebrow">Đã hoàn thành</p>
+            <h2>
+              Em đã làm bài này đạt {data.best.correct}/{data.best.total} ({Math.round((data.best.correct / data.best.total) * 100)}%) 🎉
+            </h2>
+            <p className="small muted">
+              Bài đạt từ {m.lockAtPercent}% trở lên được khoá lại để em chuyển sang bài khác. Nếu cần làm lại, em nhắn {teacher} mở lại nhé.
+            </p>
+          </div>
+          <Link className="btn btn-primary" href="/">
+            Về trang học tập
+          </Link>
+        </section>
+      )}
       {data.status === "ok" && data.preview && (
         <p className="alert alert-good" style={{ marginTop: 18 }}>
           <b>Chế độ xem trước của giáo viên.</b> Thầy cô làm thử và nộp bình thường để xem chấm điểm, nhưng kết quả không được lưu.
@@ -126,6 +151,7 @@ function newAttempt(sections: PubSection[], mix: boolean): Attempt {
   return {
     answers: {},
     submitted: false,
+    startedAt: Date.now(),
     sections: sections.map((sec, si) => {
       const keep = !mix || !!(sec.listen || sec.passage) || sec.questions.some((q) => q.type === "essay");
       const order = sec.questions.map((_, i) => i);
@@ -170,6 +196,7 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
   // Long essays must survive a closed tab, so drafts live in localStorage, per student.
   const who = preview ? "preview" : `${home?.student?.name ?? ""}|${home?.student?.className ?? ""}`;
   const draftKey = `tedu.draft.${who}.${meta.id}`;
+  const limitSec = meta.timer !== "off" && meta.minutes > 0 ? meta.minutes * 60 : 0;
   const [att, setAtt] = useState<Attempt>(() => newAttempt(sections, false));
   const [busy, setBusy] = useState(false);
   const [showCopy, setShowCopy] = useState<string | null>(null);
@@ -179,13 +206,27 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
   // Restore an unfinished attempt after a reload (same tab).
   useEffect(() => {
     const d = sget<Attempt | null>("localStorage", draftKey, null);
+    if (!draftFits(d, sections)) return;
+    // A sitting abandoned long ago gets a fresh clock instead of being submitted on open.
+    const stale = !d.startedAt || (limitSec > 0 && Date.now() - d.startedAt > (limitSec + 600) * 1000);
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (draftFits(d, sections)) setAtt(d);
-  }, [draftKey, sections]);
+    setAtt(stale ? { ...d, startedAt: Date.now() } : d);
+  }, [draftKey, sections, limitSec]);
 
   useEffect(() => {
-    if (!att.submitted && Object.keys(att.answers).length) sset("localStorage", draftKey, att);
+    // Saved even before the first answer so a reload can't restart the clock.
+    if (!att.submitted) sset("localStorage", draftKey, att);
   }, [att, draftKey]);
+
+  /* ---------- countdown ---------- */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!limitSec || att.submitted) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [limitSec, att.submitted]);
+  const remaining = limitSec ? Math.max(0, Math.ceil(limitSec - (now - att.startedAt) / 1000)) : null;
+  const autoSubmitted = useRef(false);
 
   const total = meta.questionCount;
   const answered = answeredCount(sections, att.answers);
@@ -197,6 +238,7 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
   /* ---------- listening (browser text-to-speech) ---------- */
   const [tts, setTts] = useState<{ sec: number | null; playing: boolean; paused: boolean; msg: string }>({ sec: null, playing: false, paused: false, msg: "" });
   const [rate, setRate] = useState(0.9);
+  const [accent, setAccent] = useState<"uk" | "us">(meta.accent);
   const ttsToken = useRef(0);
 
   const ttsStop = useCallback(() => {
@@ -217,7 +259,7 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
     return ttsStop;
   }, [ttsStop]);
 
-  function ttsPlay(si: number, r = rate) {
+  function ttsPlay(si: number, r = rate, acc = accent) {
     const sec = sections[si];
     if (!sec?.listen) return;
     if (!("speechSynthesis" in window) || typeof window.SpeechSynthesisUtterance !== "function") {
@@ -227,8 +269,8 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
     ttsStop();
     const synth = window.speechSynthesis;
     const voices = synth.getVoices().filter((v) => /^en[-_]/i.test(v.lang));
-    const gb = voices.filter((v) => /gb/i.test(v.lang));
-    const pool = gb.length >= 2 ? gb : voices;
+    const regional = voices.filter((v) => (acc === "us" ? /us/i : /gb/i).test(v.lang));
+    const pool = regional.length ? regional : voices;
     const speakers: Record<string, number> = {};
     let count = 0;
     const lines = parseDialogue(sec.listen);
@@ -238,7 +280,7 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
       const who = line.speaker ?? "_";
       if (!(who in speakers)) speakers[who] = count++;
       const u = new window.SpeechSynthesisUtterance(line.text);
-      u.lang = "en-GB";
+      u.lang = acc === "us" ? "en-US" : "en-GB";
       u.rate = r;
       if (pool.length) u.voice = pool[speakers[who] % pool.length];
       if (pool.length < 2) u.pitch = speakers[who] % 2 ? 1.15 : 0.92; // tell speakers apart with one voice
@@ -258,7 +300,7 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
   }
 
   /* ---------- submit / retry ---------- */
-  async function submit() {
+  async function submit(auto = false) {
     if (busy || (!token && !preview)) return;
     const short = sections.flatMap((sec, si) =>
       sec.questions.flatMap((q, qi) => {
@@ -267,12 +309,12 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
         return n < q.minWords ? [`${n}/${q.minWords} từ`] : [];
       }),
     );
-    if (short.length && !window.confirm(`Bài viết chưa đủ số từ tối thiểu (${short.join(", ")}). Em vẫn muốn nộp?`)) return;
+    if (!auto && short.length && !window.confirm(`Bài viết chưa đủ số từ tối thiểu (${short.join(", ")}). Em vẫn muốn nộp?`)) return;
     ttsStop();
     setTts((t) => ({ ...t, playing: false, paused: false }));
     setBusy(true);
     try {
-      const outcome = await submitMut({ token: token ?? undefined, adminToken: preview ? adminToken ?? undefined : undefined, id: meta.id, answers: att.answers });
+      const outcome = await submitMut({ token: token ?? undefined, adminToken: preview ? adminToken ?? undefined : undefined, id: meta.id, answers: att.answers, durationSec: (Date.now() - att.startedAt) / 1000 });
       setAtt((a) => ({ ...a, submitted: true, outcome }));
       sdel("localStorage", draftKey);
     } catch (e) {
@@ -281,6 +323,15 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
       setBusy(false);
     }
   }
+
+  // Time is up on an auto-submit quiz.
+  useEffect(() => {
+    if (remaining !== 0 || meta.timer !== "auto" || att.submitted || autoSubmitted.current) return;
+    autoSubmitted.current = true;
+    toast("Hết giờ! Bài của em đã được nộp tự động.");
+    submit(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remaining]);
 
   useEffect(() => {
     if (!att.submitted || !resultRef.current) return;
@@ -298,6 +349,7 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
     setShowCopy(null);
     // Keep the essays so the student can revise and resubmit them.
     setAtt((prev) => {
+      autoSubmitted.current = false;
       const next = newAttempt(sections, true);
       sections.forEach((sec, si) =>
         sec.questions.forEach((q, qi) => {
@@ -334,7 +386,17 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
   return (
     <div className="quiz-wrap" ref={rootRef}>
       {att.submitted && att.outcome && (
-        <ResultBlock outcome={att.outcome} ielts={!!meta.ielts} teacher={teacher} preview={preview} resultRef={resultRef} onRetry={retry} onCopy={copyResult} copyFallback={showCopy} />
+        <ResultBlock
+          outcome={att.outcome}
+          ielts={!!meta.ielts}
+          teacher={teacher}
+          preview={preview}
+          lockAt={meta.lockAtPercent}
+          resultRef={resultRef}
+          onRetry={retry}
+          onCopy={copyResult}
+          copyFallback={showCopy}
+        />
       )}
       {att.sections.map((sa) => {
         const sec = sections[sa.si];
@@ -430,6 +492,26 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
                       Dừng
                     </button>
                   )}
+                  <span className="speed" role="group" aria-label="Giọng đọc">
+                    {(
+                      [
+                        ["uk", "🇬🇧 Anh"],
+                        ["us", "🇺🇸 Mỹ"],
+                      ] as const
+                    ).map(([acc, label]) => (
+                      <button
+                        key={acc}
+                        type="button"
+                        aria-pressed={accent === acc}
+                        onClick={() => {
+                          setAccent(acc);
+                          if (tts.playing && tts.sec != null) ttsPlay(tts.sec, rate, acc);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </span>
                   <span className="speed" role="group" aria-label="Tốc độ đọc">
                     {[
                       [0.75, "Chậm"],
@@ -478,6 +560,11 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
       {!att.submitted && (
         <div className="submit-bar">
           <div className="progress-row">
+            {remaining != null && (
+              <span className={`timer${remaining === 0 ? " over" : remaining <= 60 ? " low" : remaining <= 300 ? " warn" : ""}`} role="timer" aria-live={remaining <= 60 ? "polite" : "off"}>
+                ⏱ {remaining === 0 ? "Hết giờ" : clock(remaining)}
+              </span>
+            )}
             <span>
               Đã làm {answered}/{total} câu
             </span>
@@ -485,7 +572,8 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
               <i style={{ width: `${total ? (answered / total) * 100 : 0}%` }} />
             </span>
           </div>
-          <button className="btn btn-primary btn-block" type="button" onClick={submit} disabled={busy}>
+          {remaining === 0 && meta.timer !== "auto" && <p className="alert alert-bad">Đã hết giờ làm bài. Em kiểm tra lại rồi bấm nộp bài nhé.</p>}
+          <button className="btn btn-primary btn-block" type="button" onClick={() => submit()} disabled={busy}>
             {busy ? "Đang chấm bài…" : answered >= total ? "Nộp bài và xem kết quả" : `Nộp bài (${total - answered} câu chưa làm)`}
           </button>
           <p className="tiny muted" style={{ textAlign: "center" }}>
@@ -649,6 +737,7 @@ function ResultBlock({
   ielts,
   teacher,
   preview,
+  lockAt,
   resultRef,
   onRetry,
   onCopy,
@@ -658,6 +747,7 @@ function ResultBlock({
   ielts: boolean;
   teacher: string;
   preview: boolean;
+  lockAt: number;
   resultRef: React.RefObject<HTMLElement | null>;
   onRetry: () => void;
   onCopy: () => void;
@@ -669,6 +759,8 @@ function ResultBlock({
   let head: string;
   let msg: string;
   const writingOnly = r.total === 0;
+  // Reaching the threshold closes the quiz for this student (not in teacher preview).
+  const locksNow = !preview && !writingOnly && lockAt > 0 && pct >= lockAt;
   if (writingOnly) {
     head = "Đã nộp bài viết!";
     msg = preview ? "Chế độ xem trước: bài viết không được gửi đi." : `Bài đã đến tay ${teacher}. Nhận xét sẽ hiện ở đầu trang bài này khi ${teacher} chấm xong.`;
@@ -721,9 +813,13 @@ function ResultBlock({
         </div>
         )}
         <div className="result-actions">
-          <button className="btn btn-primary btn-sm" type="button" onClick={onRetry}>
-            {writingOnly ? "Sửa và nộp lại" : "Làm lại (xáo trộn câu hỏi)"}
-          </button>
+          {locksNow ? (
+            <span className="stat band">🔒 Bài đã hoàn thành và được khoá</span>
+          ) : (
+            <button className="btn btn-primary btn-sm" type="button" onClick={onRetry}>
+              {writingOnly ? "Sửa và nộp lại" : "Làm lại (xáo trộn câu hỏi)"}
+            </button>
+          )}
           <button className="btn btn-ghost btn-sm" type="button" onClick={onCopy}>
             Sao chép kết quả gửi {teacher}
           </button>
@@ -784,8 +880,16 @@ function MyWriting({ id }: { id: string }) {
                   {e.band != null && (
                     <p className="mw-band">
                       Band <b>{e.band.toFixed(1)}</b>
-                      {e.criteria && <span className="tiny muted"> · TA {e.criteria[0]} · CC {e.criteria[1]} · LR {e.criteria[2]} · GRA {e.criteria[3]}</span>}
                     </p>
+                  )}
+                  {e.criteria && (
+                    <div className="mw-criteria">
+                      {WRITING_CRITERIA.map((c, i) => (
+                        <span key={c}>
+                          {c} <b>{e.criteria![i].toFixed(1)}</b>
+                        </span>
+                      ))}
+                    </div>
                   )}
                   {e.comment && <p className="mw-comment">{e.comment}</p>}
                   {a.reviewedBy && <p className="tiny muted">— {a.reviewedBy}</p>}
@@ -799,4 +903,11 @@ function MyWriting({ id }: { id: string }) {
       ))}
     </section>
   );
+}
+
+function clock(sec: number) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const ss = String(sec % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
 }
