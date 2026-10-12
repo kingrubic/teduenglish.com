@@ -9,11 +9,17 @@ export type SheetTable = { sheet: string; headers: string[]; body: unknown[][]; 
 
 const norm = (v: unknown) => noMarks(String(v ?? "")).toLowerCase().replace(/\s+/g, " ").trim();
 const cellText = (v: unknown) => (v == null ? "" : v instanceof Date ? v.toLocaleDateString("vi-VN") : String(v)).trim();
+/** Phone cell as text; "4 số cuối" columns typed as numbers lose leading zeros (48 → "0048"). */
+function lastDigits(v: unknown): string {
+  const t = cellText(v);
+  const d = t.replace(/\D/g, "");
+  return d.length > 0 && d.length < 4 && /^\d+$/.test(t) ? d.padStart(4, "0") : t;
+}
 const looksLikePhone = (v: unknown) => /^(\+?84|0)?\d{9,10}$/.test(String(v ?? "").replace(/[\s.\-()]/g, ""));
 
 const NAME = /ho (va )?ten|ten hoc sinh|ho ten hs|^ten hs$|^name$|full name|student name/;
 const CLASS = /^(ten )?lop( hoc)?$|^class|lop$/;
-const PHONE = /dien thoai|^sdt|so dt|^dt\b|phone|zalo|lien he|lien lac|mobile|di dong|^tel/;
+const PHONE = /dien thoai|sdt|so dt|^dt\b|phone|zalo|lien he|lien lac|mobile|di dong|^tel|so cuoi/;
 const CODE = /^(ma|ma (hoc sinh|hs|ca nhan|moi|dang nhap|truy cap|so))$|^(student )?code$/;
 
 /** Finds the header row and the name / class / phone / existing-code columns. */
@@ -64,7 +70,7 @@ export function rowsFrom(t: SheetTable, cols: Columns = t.cols): ClassListRow[] 
     rows.push({
       name,
       className: cols.className >= 0 ? cellText(row[cols.className]) : "",
-      phone: cols.phone >= 0 ? cellText(row[cols.phone]) : "",
+      phone: cols.phone >= 0 ? lastDigits(row[cols.phone]) : "",
       code: cols.code >= 0 ? cellText(row[cols.code]) : "",
     });
   }

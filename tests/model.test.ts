@@ -148,6 +148,21 @@ describe("writing & class lists", () => {
     expect(guessed.columns.phone).toBe("Ghi chú");
   });
 
+  it("reads the teacher's class list format (title rows, “4 số cuối SĐT PH”)", async () => {
+    const { tableToClassList } = await import("@/lib/excel");
+    const { phoneCode } = await import("@/convex/model");
+    const list = tableToClassList([
+      ["DANH SÁCH MÃ CÁ NHÂN — ANH 10 & IELTS", null, null, null, null],
+      ["Lớp Thứ 2/4 | 28 học sinh", null, null, null, null],
+      [null, null, null, null, null],
+      ["STT", "Tên lớp", "Họ và tên học sinh", "4 số cuối SĐT PH", "Trạng thái mã cá nhân"],
+      [1, "Anh 10 & IELTS — Thứ 2/4", "Ngô Thử Minh", "4821", null],
+      [12, "Anh 10 & IELTS — Thứ 2/4", "Lê Thử Khang", 48, null],
+    ]);
+    expect(list.columns.phone).toBe("4 số cuối SĐT PH");
+    expect(list.rows.map((r) => phoneCode(r.name, r.phone))).toEqual(["thuminh4821", "thukhang0048"]);
+  });
+
   it("makes last-two-words codes whether or not there is a phone", async () => {
     const { lastTwoWords, phoneCode } = await import("@/convex/model");
     expect(lastTwoWords("Trần Bảo An")).toBe("baoan");
