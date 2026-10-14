@@ -31,7 +31,7 @@ export const sectionValidator = v.object({
 });
 
 export const ieltsValidator = v.optional(
-  v.union(v.literal("listening"), v.literal("reading")),
+  v.union(v.literal("listening"), v.literal("reading"), v.literal("writing")),
 );
 
 export const termValidator = v.optional(v.union(v.literal("hk1"), v.literal("hk2")));
@@ -76,11 +76,23 @@ export default defineSchema({
     note: v.optional(v.string()),
     createdAt: v.number(),
     lastSeenAt: v.optional(v.number()),
+    // Read-only code for parents (/phu-huynh).
+    parentCode: v.optional(v.string()),
   })
     .index("by_code", ["code"])
+    .index("by_parentCode", ["parentCode"])
     .index("by_class", ["className"]),
 
   studentSessions: defineTable({
+    studentId: v.id("students"),
+    tokenHash: v.string(),
+    expiresAt: v.number(),
+  })
+    .index("by_tokenHash", ["tokenHash"])
+    .index("by_student", ["studentId"])
+    .index("by_expiresAt", ["expiresAt"]),
+
+  parentSessions: defineTable({
     studentId: v.id("students"),
     tokenHash: v.string(),
     expiresAt: v.number(),

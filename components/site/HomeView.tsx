@@ -51,6 +51,12 @@ function Hero({ folders }: { folders: FolderInfo[] }) {
         </div>
         <LoginForm ctx="home" />
         <p className="tiny muted">Không chia sẻ mã cá nhân. Nếu mã không hoạt động, em nhắn {teacher} để được cấp lại.</p>
+        <Link className="track-link" href="/phu-huynh">
+          <span>
+            Phụ huynh theo dõi kết quả của con<small>Điểm số, thứ hạng, chuyên cần · cần mã phụ huynh</small>
+          </span>
+          <span aria-hidden="true">→</span>
+        </Link>
         <hr className="divider" />
         <div className="stack">
           <div>
@@ -89,7 +95,7 @@ function Dashboard({ home }: { home: HomeData }) {
   const folders = home.folders.filter((f) => dash.openFolders.includes(f.id));
   const done: DoneMap = dash.done;
   const myQuizzes = dash.quizzes;
-  const doneCount = myQuizzes.filter((q) => done[q.id]).length;
+  const progress = dash.progress;
   const featured = myQuizzes.filter((q) => q.featured);
   const folderName = (id: string) => home.folders.find((f) => f.id === id)?.name ?? "";
   const quizzesIn = (id: string): QuizMeta[] => myQuizzes.filter((q) => q.folder === id);
@@ -106,8 +112,9 @@ function Dashboard({ home }: { home: HomeData }) {
           <span>{folders.length} thư mục</span>
           <span>{myQuizzes.length} bài làm trên web</span>
           <span>
-            Đã hoàn thành {doneCount}/{myQuizzes.length}
+            Đã làm {progress.done}/{progress.total} bài
           </span>
+          <span>Chuyên cần {progress.rate}%</span>
         </div>
       </section>
 
@@ -131,7 +138,7 @@ function Dashboard({ home }: { home: HomeData }) {
                 <div className="ft-text">
                   <p className="eyebrow">
                     {folderName(q.folder)}
-                    {q.ielts ? " · Band tham khảo" : ""}
+                    {q.ielts === "listening" || q.ielts === "reading" ? " · Band tham khảo" : ""}
                   </p>
                   <h3>{q.title}</h3>
                   <p>
@@ -157,7 +164,15 @@ function Dashboard({ home }: { home: HomeData }) {
       {folders.length ? (
         <div className={`folder-grid${folders.length % 3 === 0 ? " three" : ""}`}>
           {folders.map((f) => (
-            <FolderCard key={f.id} f={f} tone={home.folders.indexOf(f)} quizzes={quizzesIn(f.id)} resources={resourcesIn(f.id)} done={done} />
+            <FolderCard
+              key={f.id}
+              f={f}
+              tone={home.folders.indexOf(f)}
+              quizzes={quizzesIn(f.id)}
+              resources={resourcesIn(f.id)}
+              done={done}
+              progress={progress.byFolder.find((p) => p.id === f.id)}
+            />
           ))}
         </div>
       ) : (

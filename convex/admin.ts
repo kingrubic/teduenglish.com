@@ -20,6 +20,7 @@ import {
   studentByCode,
   verifyPassword,
 } from "./lib";
+import { generateParentCode } from "./stats";
 import { accentValidator, essayReviewValidator, ieltsValidator, resourceKindValidator, sectionValidator, termValidator, timerValidator } from "./schema";
 import { MAX_PDF_BYTES, formatBytes, hasEssay, isCorrect, normCode, questionCount, slugify, validateSections, wordCount, writingBand } from "./model";
 
@@ -292,6 +293,7 @@ export const students = query({
         folders: s.folders,
         active: s.active,
         note: s.note ?? "",
+        parentCode: s.parentCode ?? "",
         createdAt: s.createdAt,
         lastSeenAt: s.lastSeenAt ?? null,
         attemptCount: stats.get(s._id)?.count ?? 0,
@@ -342,7 +344,7 @@ export const saveStudent = mutation({
       if (prev.code !== code || !args.active) await clearStudentSessions(ctx, args.id);
       return { id: args.id, code };
     }
-    const id = await ctx.db.insert("students", { ...data, createdAt: Date.now() });
+    const id = await ctx.db.insert("students", { ...data, parentCode: await generateParentCode(ctx, name), createdAt: Date.now() });
     return { id, code };
   },
 });
@@ -359,7 +361,7 @@ export const bulkCreateStudents = mutation({
     await requireAdmin(ctx, args.token);
     if (args.rows.length > 300) fail("Mỗi lần thêm tối đa 300 học sinh.");
     const folders = await assertFolders(ctx, args.folders);
-    const created: { name: string; className: string; code: string }[] = [];
+    const created: { name: string; className: string; code: string; parentCode: string }[] = [];
     const skipped: { name: string; className: string; reason: string }[] = [];
     for (const r of args.rows) {
       const name = r.name.trim().replace(/\s+/g, " ");
@@ -380,8 +382,9 @@ export const bulkCreateStudents = mutation({
           continue;
         }
       } else code = await generateStudentCode(ctx, name, r.style ?? "first");
-      await ctx.db.insert("students", { name, className, code, folders, active: true, note: "", createdAt: Date.now() });
-      created.push({ name, className, code });
+      const parentCode = await generateParentCode(ctx, name);
+      await ctx.db.insert("students", { name, className, code, parentCode, folders, active: true, note: "", createdAt: Date.now() });
+      created.push({ name, className, code, parentCode });
     }
     return { created, skipped };
   },
@@ -430,6 +433,7 @@ export const deleteStudent = mutation({
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.token);
     await clearStudentSessions(ctx, args.id);
+    for (const p of await ctx.db.query("parentSessions").withIndex("by_student", (q) => q.eq("studentId", args.id)).collect()) await ctx.db.delete(p._id);
     for (const a of await ctx.db.query("attempts").withIndex("by_student", (q) => q.eq("studentId", args.id)).collect())
       await ctx.db.delete(a._id);
     for (const u of await ctx.db.query("quizUnlocks").withIndex("by_student_quiz", (q) => q.eq("studentId", args.id)).collect())

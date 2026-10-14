@@ -189,6 +189,7 @@ export default function SiteShell({ children }: { children: React.ReactNode }) {
               </span>
               <nav aria-label="Liên kết cuối trang">
                 <Link href="/">Trang học tập</Link>
+                <Link href="/phu-huynh">Phụ huynh</Link>
                 <Link href="/admin">Khu vực giáo viên</Link>
               </nav>
             </footer>

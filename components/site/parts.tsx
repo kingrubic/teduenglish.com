@@ -119,6 +119,7 @@ export function QuizButton({ quiz, done }: { quiz: QuizMeta; done: DoneMap }) {
   return (
     <Link className={`quiz-btn${rec ? " done" : ""}`} href={`/bai/${quiz.id}`}>
       <span className="q-title">
+        {rec && <span aria-label="Đã làm">✓ </span>}
         {quiz.title}
         {quiz.hasCode && !rec && <span className="lock">· cần mã bài</span>}
       </span>
@@ -189,7 +190,21 @@ function TermHead({ term, grouped }: { term: string | null; grouped: boolean }) 
   return <p className="term-head">{term ? TERM_LABEL[term] : "Bài chung"}</p>;
 }
 
-export function FolderCard({ f, tone, quizzes, resources, done }: { f: FolderInfo; tone: number; quizzes: QuizMeta[]; resources: ResourceRow[]; done: DoneMap }) {
+export function FolderCard({
+  f,
+  tone,
+  quizzes,
+  resources,
+  done,
+  progress,
+}: {
+  f: FolderInfo;
+  tone: number;
+  quizzes: QuizMeta[];
+  resources: ResourceRow[];
+  done: DoneMap;
+  progress?: { done: number; total: number; rate: number };
+}) {
   const total = quizzes.length + resources.length;
   return (
     <article className="folder">
@@ -203,8 +218,13 @@ export function FolderCard({ f, tone, quizzes, resources, done }: { f: FolderInf
           </h3>
           <p>{f.detail}</p>
         </div>
-        <span className="count-chip">{total} bài</span>
+        <span className="count-chip">{progress ? `${progress.done}/${progress.total} bài · ${progress.rate}%` : `${total} bài`}</span>
       </div>
+      {progress && (
+        <span className="progress folder-progress" title={`Chuyên cần ${progress.rate}%`} aria-hidden="true">
+          <i style={{ width: `${progress.rate}%` }} />
+        </span>
+      )}
       {byTerm([...quizzes.map((q) => ({ term: q.term, quiz: q })), ...resources.map((r) => ({ term: r.term, res: r }))]).map(([term, items], _, all) => (
         <div className="term-group" key={term ?? "all"}>
           <TermHead term={term} grouped={all.length > 1 || term != null} />

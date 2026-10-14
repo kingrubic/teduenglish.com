@@ -12,6 +12,8 @@ export const cleanup = internalMutation({
     for (const s of oldStudent) await ctx.db.delete(s._id);
     const oldAdmin = await ctx.db.query("adminSessions").withIndex("by_expiresAt", (q) => q.lt("expiresAt", now)).take(500);
     for (const s of oldAdmin) await ctx.db.delete(s._id);
+    const oldParent = await ctx.db.query("parentSessions").withIndex("by_expiresAt", (q) => q.lt("expiresAt", now)).take(500);
+    for (const s of oldParent) await ctx.db.delete(s._id);
     // Uploads that never got attached to a resource (form closed before saving).
     const used = new Set<string>((await ctx.db.query("resources").collect()).flatMap((r) => (r.file ? [r.file.storageId] : [])));
     for (const q of await ctx.db.query("quizzes").collect()) quizImageIds(q.sections).forEach((id) => used.add(id));

@@ -867,6 +867,14 @@ const FAQ: [string, React.ReactNode][] = [
     </>,
   ],
   [
+    "Phụ huynh theo dõi con thế nào?",
+    "Mỗi em có một mã phụ huynh riêng (cột “Mã phụ huynh” ở trang Học sinh, có trong file Excel tải về). Phụ huynh vào teduenglish.com/phu-huynh, nhập mã là xem được điểm từng bài, thứ hạng IELTS trong lớp (tên các bạn khác bị ẩn), số bài đã làm/chưa làm, tỷ lệ chuyên cần và nhận xét bài viết. Mã phụ huynh chỉ để xem, không làm bài được.",
+  ],
+  [
+    "Xem bảng xếp hạng và chuyên cần ở đâu?",
+    "Trang Thống kê: thẻ “Chuyên cần” (tỷ lệ bài đã làm / bài được giao, lọc theo lớp và thư mục) và thẻ “Xếp hạng IELTS” (lọc theo lớp, kỹ năng, từng bài; bật “Ẩn tên” khi chiếu cho cả lớp). Cả hai đều tải Excel được. Muốn bài Writing vào bảng xếp hạng: đặt bài trong thư mục IELTS hoặc chọn “IELTS Writing” ở ô Kỹ năng IELTS, và chấm band cho từng Task.",
+  ],
+  [
     "Vì sao có bài bị mờ đi, học sinh không bấm vào được?",
     "Bài trắc nghiệm, điền từ mà em làm đúng từ 80% trở lên sẽ tự khoá (mờ đi) để tránh cho bạn mượn tài khoản làm hộ hoặc chép đáp án. Đổi mức % hoặc tắt (đặt 0) ở Cài đặt & tài khoản. Muốn cho một em làm lại: vào Kết quả, bấm “🔓 Cho làm lại” ở dòng bài đó, điểm cũ vẫn giữ.",
   ],

@@ -38,7 +38,7 @@ type Draft = {
   minutes: number;
   code: string;
   featured: boolean;
-  ielts: "" | "listening" | "reading";
+  ielts: "" | "listening" | "reading" | "writing";
   timer: "off" | "count" | "auto";
   accent: "uk" | "us";
   term: "" | "hk1" | "hk2";
@@ -316,11 +316,14 @@ export default function QuizEditor({ id }: { id: string }) {
         </div>
         <div className="row-3">
           <div className="field">
-            <label htmlFor="qz-ielts">Band IELTS tham khảo</label>
+            <label htmlFor="qz-ielts">
+              Kỹ năng IELTS <span className="hint">(để xếp hạng)</span>
+            </label>
             <select className="select" id="qz-ielts" value={d.ielts} onChange={(e) => update({ ielts: e.target.value as Draft["ielts"] })}>
               <option value="">Không hiện band</option>
               <option value="listening">IELTS Listening</option>
               <option value="reading">IELTS Reading</option>
+              <option value="writing">IELTS Writing (band do giáo viên chấm)</option>
             </select>
           </div>
           <div className="field">
@@ -653,7 +656,7 @@ function JsonDialog({ draft, onClose, onApply }: { draft: Draft; onClose: () => 
       if (typeof obj.minutes === "number") patch.minutes = obj.minutes;
       if (typeof obj.code === "string") patch.code = obj.code;
       if (typeof obj.featured === "boolean") patch.featured = obj.featured;
-      if (obj.ielts === "listening" || obj.ielts === "reading") patch.ielts = obj.ielts;
+      if (obj.ielts === "listening" || obj.ielts === "reading" || obj.ielts === "writing") patch.ielts = obj.ielts;
       if (typeof obj.id === "string" && !draft.slug) patch.slug = obj.id;
       onApply(patch);
     } catch (e) {

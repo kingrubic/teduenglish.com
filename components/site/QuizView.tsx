@@ -65,7 +65,7 @@ export default function QuizView({ id }: { id: string }) {
           <span>{m.questionCount} câu</span>
           {m.minutes > 0 && <span>{m.timer === "off" ? `Khoảng ${m.minutes} phút` : `⏱ ${m.minutes} phút${m.timer === "auto" ? " · tự nộp khi hết giờ" : ""}`}</span>}
           {m.hasEssay ? <span>Có bài viết · {teacher} nhận xét</span> : <span>Chấm tự động</span>}
-          {m.ielts && <span>Band tham khảo</span>}
+          {(m.ielts === "listening" || m.ielts === "reading") && <span>Band tham khảo</span>}
         </div>
       </section>
       {data.status === "login" && <GateLogin title="Đăng nhập để làm bài" note="Nhập mã cá nhân trước, sau đó em sẽ vào thẳng bài này." />}

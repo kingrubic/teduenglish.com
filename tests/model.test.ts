@@ -180,3 +180,33 @@ describe("writing & class lists", () => {
     expect(isMastered([a(0, 0)], 80)).toBe(false);
   });
 });
+
+describe("statistics", () => {
+  it("combines Writing tasks the IELTS way (Task 2 counts double)", async () => {
+    const { writingTestBand, roundBand } = await import("@/convex/model");
+    expect(writingTestBand([6, 7])).toBe(6.5); // 6.67 → 6.5
+    expect(writingTestBand([6, 8])).toBe(7.5); // 7.33 → 7.5
+    expect(writingTestBand([7, 6])).toBe(6.5); // 6.33 → 6.5
+    expect(writingTestBand([6.5])).toBe(6.5);
+    expect(writingTestBand([6, undefined])).toBeNull(); // Task 2 not marked yet
+    expect(roundBand(6.2)).toBe(6);
+  });
+
+  it("ranks with ties sharing a place", async () => {
+    const { rankBy, maskedName } = await import("@/convex/model");
+    const r = rankBy([{ n: "a", v: 7 }, { n: "b", v: 8.5 }, { n: "c", v: 7 }, { n: "d", v: 6 }], (x) => x.v);
+    expect(r.map((x) => `${x.rank}${x.item.n}`)).toEqual(["1b", "2a", "2c", "4d"]);
+    expect(maskedName("thanhtoan0789")).toBe("Xxxxx0789");
+  });
+
+  it("computes completion per folder from submitted quizzes", async () => {
+    const { progressOf } = await import("@/convex/stats");
+    const student = { folders: ["gs10"] } as never;
+    const folders = [{ slug: "gs10", name: "Global Success 10" }, { slug: "gs11", name: "Global Success 11" }] as never;
+    const q = (id: string, folder: string, published = true) => ({ _id: id, slug: id, title: id, folder, published, order: 0 });
+    const quizzes = [...Array.from({ length: 10 }, (_, i) => q(`a${i}`, "gs10")), q("draft", "gs10", false), q("other", "gs11")] as never;
+    const p = progressOf(student, folders, quizzes, new Set(["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"]) as never);
+    expect([p.done, p.total, p.rate, p.pending.length]).toEqual([8, 10, 80, 2]);
+    expect(p.byFolder).toEqual([{ id: "gs10", name: "Global Success 10", total: 10, done: 8, rate: 80 }]);
+  });
+});

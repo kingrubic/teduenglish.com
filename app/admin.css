@@ -145,3 +145,10 @@ td .sub { display: block; font-size: 0.78rem; color: var(--muted); }
 .mode-pick b { font-size: 0.9rem; }
 .mode-pick.on { border-color: var(--accent); background: var(--accent-soft); }
 .mode-pick.off { opacity: .6; cursor: not-allowed; }
+
+.check.on-tab { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+button.check { background: var(--surface); }
+.bar.good i { background: var(--good); }
+.bar.low i { background: var(--bad); }
+.rank-table tr.top td { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+.rank-table th .sub { font-weight: 600; }

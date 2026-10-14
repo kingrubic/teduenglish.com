@@ -20,6 +20,9 @@ export default function Students() {
   const students = useQuery(api.admin.students, { token });
   const folders = useQuery(api.admin.folders, { token });
   const regen = useMutation(api.admin.regenerateCode);
+  const regenParent = useMutation(api.stats.regenerateParentCode);
+  const fillParents = useMutation(api.stats.fillParentCodes);
+  const missingParent = (students ?? []).filter((s) => !s.parentCode).length;
   const del = useMutation(api.admin.deleteStudent);
   const setFolders = useMutation(api.admin.setStudentsFolders);
 
@@ -58,13 +61,16 @@ export default function Students() {
   function exportList() {
     downloadXlsx(
       `hoc-sinh${cls ? "-" + cls : ""}.xlsx`,
-      ["Họ tên", "Lớp", "Mã", "Thư mục", "Trạng thái"],
-      list.map((s) => [s.name, s.className, s.code, s.folders.map((f) => (f === "*" ? "Tất cả" : folderName.get(f) ?? f)).join("; "), s.active ? "Đang mở" : "Đã khóa"]),
+      ["Họ tên", "Lớp", "Mã học sinh", "Mã phụ huynh", "Thư mục", "Trạng thái"],
+      list.map((s) => [s.name, s.className, s.code, s.parentCode, s.folders.map((f) => (f === "*" ? "Tất cả" : folderName.get(f) ?? f)).join("; "), s.active ? "Đang mở" : "Đã khóa"]),
     );
   }
 
   function copyCodes() {
-    const text = list.filter((s) => s.active).map((s) => `${s.name} (${s.className}): ${s.code}`).join("\n");
+    const text = list
+      .filter((s) => s.active)
+      .map((s) => `${s.name} (${s.className}): ${s.code}${s.parentCode ? ` · phụ huynh: ${s.parentCode}` : ""}`)
+      .join("\n");
     copyText(text, () => toast(`Đã sao chép mã của ${list.filter((s) => s.active).length} học sinh.`), () => toast("Trình duyệt chặn sao chép. Dùng nút Tải Excel."));
   }
 
@@ -82,6 +88,11 @@ export default function Students() {
           <p className="small muted">Mỗi em một mã cá nhân. Khóa mã hoặc đổi mã sẽ đăng xuất em đó trên mọi thiết bị.</p>
         </div>
         <div className="actions">
+          {missingParent > 0 && (
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => run(() => fillParents({ token }), "Đã tạo mã phụ huynh cho các em còn thiếu.")}>
+              Tạo mã phụ huynh ({missingParent} em)
+            </button>
+          )}
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => setBulk(true)} disabled={!folders}>
             Thêm nhiều học sinh
           </button>
@@ -171,6 +182,7 @@ export default function Students() {
                 <th>Họ tên</th>
                 <th>Lớp</th>
                 <th>Mã</th>
+                <th>Mã phụ huynh</th>
                 <th>Thư mục</th>
                 <th className="num">Bài đã nộp</th>
                 <th>Trạng thái</th>
@@ -190,6 +202,21 @@ export default function Students() {
                   <td>{s.className}</td>
                   <td>
                     <code>{s.code}</code>
+                  </td>
+                  <td>
+                    {s.parentCode ? <code>{s.parentCode}</code> : <span className="muted tiny">Chưa có</span>}
+                    <button
+                      className="link-btn"
+                      type="button"
+                      style={{ display: "block" }}
+                      onClick={async () => {
+                        if (s.parentCode && !confirm(`Tạo mã phụ huynh mới cho ${s.name}? Mã cũ sẽ không dùng được nữa.`)) return;
+                        const c = await run(() => regenParent({ token, id: s._id }));
+                        if (c) toast(`Mã phụ huynh của ${s.name}: ${c}`);
+                      }}
+                    >
+                      {s.parentCode ? "Đổi mã PH" : "Tạo mã PH"}
+                    </button>
                   </td>
                   <td>
                     {s.folders.length ? (
@@ -397,7 +424,7 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
   const [picked, setPicked] = useState<string[]>([]);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<{ created: { name: string; className: string; code: string }[]; skipped: { name: string; className: string; reason: string }[] } | null>(null);
+  const [done, setDone] = useState<{ created: { name: string; className: string; code: string; parentCode: string }[]; skipped: { name: string; className: string; reason: string }[] } | null>(null);
 
   const raw: ClassListRow[] =
     source === "file"
@@ -465,7 +492,7 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
   }
 
   if (done) {
-    const out = done.created.map((s) => `${s.name} (${s.className}): ${s.code}`).join("\n");
+    const out = done.created.map((s) => `${s.name} (${s.className}): ${s.code} · phụ huynh: ${s.parentCode}`).join("\n");
     return (
       <Modal title={`Đã tạo ${done.created.length} học sinh`} onClose={onClose} wide>
         {done.created.length > 0 && <textarea className="textarea" readOnly value={out} rows={Math.min(12, done.created.length + 1)} onFocus={(e) => e.currentTarget.select()} />}
@@ -481,7 +508,13 @@ function BulkForm({ folders, classes, students, onClose }: { folders: Folder[]; 
             className="btn btn-ghost"
             type="button"
             disabled={!done.created.length}
-            onClick={() => downloadXlsx("ma-hoc-sinh-moi.xlsx", ["Họ tên", "Lớp", "Mã cá nhân"], done.created.map((s) => [s.name, s.className, s.code]))}
+            onClick={() =>
+              downloadXlsx(
+                "ma-hoc-sinh-moi.xlsx",
+                ["Họ tên", "Lớp", "Mã cá nhân", "Mã phụ huynh"],
+                done.created.map((s) => [s.name, s.className, s.code, s.parentCode]),
+              )
+            }
           >
             Tải file Excel
           </button>

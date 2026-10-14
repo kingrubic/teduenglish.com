@@ -18,6 +18,7 @@ export type Section = {
   questions: Question[];
 };
 export type IeltsKind = "listening" | "reading";
+export type IeltsSkill = IeltsKind | "writing";
 export type AnswerValue = string | number;
 export type Answers = Record<string, AnswerValue>;
 
@@ -144,8 +145,8 @@ const BANDS: Record<IeltsKind, [number, number][]> = {
   reading: [[39, 9], [37, 8.5], [35, 8], [33, 7.5], [30, 7], [27, 6.5], [23, 6], [19, 5.5], [15, 5], [13, 4.5], [10, 4], [8, 3.5], [6, 3], [4, 2.5], [0, 0]],
 };
 
-export function bandFor(kind: IeltsKind | undefined | null, correct: number, total: number): number | null {
-  const table = kind ? BANDS[kind] : undefined;
+export function bandFor(kind: IeltsSkill | undefined | null, correct: number, total: number): number | null {
+  const table = kind && kind !== "writing" ? BANDS[kind] : undefined;
   if (!table || !total) return null;
   const scaled = Math.round((correct / total) * 40);
   for (const [min, band] of table) if (scaled >= min) return band;
@@ -171,6 +172,39 @@ export function writingBand(criteria: number[]): number | null {
 export function lastTwoWords(name: string): string {
   const words = noMarks(name).toLowerCase().replace(/[^a-z0-9\s]/g, " ").trim().split(/\s+/).filter(Boolean);
   return words.slice(-2).join("").slice(0, 20);
+}
+
+/** IELTS rounding to the nearest half band: .25 → .5, .75 → next band. */
+export function roundBand(x: number): number {
+  const base = Math.floor(x);
+  const frac = x - base;
+  return frac < 0.25 ? base : frac < 0.75 ? base + 0.5 : base + 1;
+}
+
+/** One Writing band for a test: Task 2 counts double when there are two tasks; null until every task is marked. */
+export function writingTestBand(taskBands: (number | null | undefined)[]): number | null {
+  if (!taskBands.length || taskBands.some((b) => b == null)) return null;
+  const b = taskBands as number[];
+  return roundBand(b.length === 2 ? (b[0] + 2 * b[1]) / 3 : b.reduce((s, x) => s + x, 0) / b.length);
+}
+
+/** Competition ranking (1, 2, 2, 4) by value, highest first. */
+export function rankBy<T>(items: T[], value: (t: T) => number): { item: T; rank: number }[] {
+  const sorted = [...items].sort((a, b) => value(b) - value(a));
+  let rank = 0;
+  return sorted.map((item, i) => {
+    if (i === 0 || value(item) !== value(sorted[i - 1])) rank = i + 1;
+    return { item, rank };
+  });
+}
+
+/** "Xxxxx" + the last 4 characters of a student code, for rankings shown to others. */
+export function maskedName(code: string): string {
+  return "Xxxxx" + code.slice(-4);
+}
+
+export function percent(done: number, total: number): number {
+  return total ? Math.round((done / total) * 100) : 0;
 }
 
 /** Code from the last two words of the name + last 4 phone digits: "Trần Bảo An", 0912 344 821 → "baoan4821". */

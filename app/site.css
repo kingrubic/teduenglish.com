@@ -737,3 +737,17 @@ td code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospac
 .term-group:first-of-type .term-head { border-top: 0; padding-top: 0; }
 .mw-criteria { display: flex; flex-wrap: wrap; gap: 6px; }
 .mw-criteria span { font-size: 0.8rem; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+
+/* Completed quizzes: ticked and slightly faded; per-folder completion bar */
+.quiz-btn.done:not(.locked) { opacity: .82; }
+.folder-progress { display: block; height: 6px; }
+.folder-progress i { background: var(--good); }
+
+/* Parent dashboard */
+.ph-att { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.ph-att .score-dial { margin: 0; width: 124px; height: 124px; }
+.ph-att .score-dial .inner { width: 98px; height: 98px; }
+.ph-att .score-dial b { font-size: 1.8rem; }
+.ph-pending summary, .ph-writing summary { font-size: 0.85rem; }
+.ph-pending ul { margin: 8px 0 0; padding-left: 18px; font-size: 0.88rem; display: flex; flex-direction: column; gap: 4px; }
+.ph-me td { background: var(--accent-soft); }

@@ -28,6 +28,7 @@ const NAV = [
   ["/admin/bai-lam", "Bài làm trên web"],
   ["/admin/tai-lieu", "Tài liệu & liên kết"],
   ["/admin/ket-qua", "Kết quả"],
+  ["/admin/thong-ke", "Thống kê"],
   ["/admin/cai-dat", "Cài đặt & tài khoản"],
   ["/admin/huong-dan", "📖 Hướng dẫn"],
 ] as const;

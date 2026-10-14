@@ -14,9 +14,11 @@ import type * as clarifyData from "../clarifyData.js";
 import type * as crons from "../crons.js";
 import type * as lib from "../lib.js";
 import type * as model from "../model.js";
+import type * as parent from "../parent.js";
 import type * as seed from "../seed.js";
 import type * as seedData from "../seedData.js";
 import type * as site from "../site.js";
+import type * as stats from "../stats.js";
 
 import type {
   ApiFromModules,
@@ -31,9 +33,11 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   lib: typeof lib;
   model: typeof model;
+  parent: typeof parent;
   seed: typeof seed;
   seedData: typeof seedData;
   site: typeof site;
+  stats: typeof stats;
 }>;
 
 /**

@@ -20,6 +20,7 @@ import {
   isMastered,
   studentQuizAttempts,
 } from "./lib";
+import { progressFor } from "./stats";
 import { MAX_ESSAY_CHARS, bandFor, grade, hasEssay, isAnswered, isCorrect, normCode, wordCount, type Answers } from "./model";
 
 const token = v.optional(v.string());
@@ -66,6 +67,7 @@ export const home = query({
         quizzes,
         resources: await Promise.all(resources.map((r) => studentResource(ctx, r))),
         done: await doneMapFor(ctx, student._id, settings.lockAtPercent),
+        progress: await progressFor(ctx, student),
       },
     };
   },
