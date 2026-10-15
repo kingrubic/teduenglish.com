@@ -868,7 +868,7 @@ const FAQ: [string, React.ReactNode][] = [
   ],
   [
     "Phụ huynh theo dõi con thế nào?",
-    "Mỗi em có một mã phụ huynh riêng (cột “Mã phụ huynh” ở trang Học sinh, có trong file Excel tải về). Phụ huynh vào teduenglish.com/phu-huynh, nhập mã là xem được kết quả riêng của con: tiến độ, tỷ lệ hoàn thành, các bài chưa làm, điểm IELTS theo kỹ năng và điểm Global Success, cùng nhận xét bài viết. Phụ huynh không thấy bảng xếp hạng. Mã phụ huynh chỉ để xem, không làm bài được.",
+    "Mã phụ huynh là mã học sinh thêm chữ “ph” trước 4 số cuối, ví dụ học sinh thanhtoan3580 thì phụ huynh là thanhtoanph3580 (cột “Mã phụ huynh” ở trang Học sinh, có trong file Excel tải về). Đổi mã học sinh thì mã phụ huynh tự đổi theo. Phụ huynh vào teduenglish.com/phu-huynh, nhập mã là xem được kết quả riêng của con: tiến độ, tỷ lệ hoàn thành, các bài chưa làm, điểm IELTS theo kỹ năng và điểm Global Success, cùng nhận xét bài viết. Phụ huynh không thấy bảng xếp hạng. Mã phụ huynh chỉ để xem, không làm bài được.",
   ],
   [
     "Xem bảng xếp hạng và chuyên cần ở đâu?",

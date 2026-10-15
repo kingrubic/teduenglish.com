@@ -212,6 +212,15 @@ export function percent(done: number, total: number): number {
   return total ? Math.round((done / total) * 100) : 0;
 }
 
+/**
+ * Parent code = the student's code with "ph" before the last 4 digits:
+ * "thanhtoan3580" → "thanhtoanph3580". Codes without 4 trailing digits just get "ph" appended.
+ */
+export function parentCodeFor(studentCode: string): string {
+  const m = /^(.*?)(\d{4})$/.exec(studentCode);
+  return m ? `${m[1]}ph${m[2]}` : `${studentCode}ph`;
+}
+
 /** Code from the last two words of the name + last 4 phone digits: "Trần Bảo An", 0912 344 821 → "baoan4821". */
 export function phoneCode(name: string, phone: unknown): string | null {
   const digits = String(phone ?? "").replace(/\D/g, "");

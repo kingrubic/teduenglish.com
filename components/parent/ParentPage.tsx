@@ -134,7 +134,7 @@ function ParentLogin({ onDone }: { onDone: (token: string) => void }) {
         <div>
           <p className="eyebrow">Parent access</p>
           <h2>Nhập mã phụ huynh</h2>
-          <p className="small muted">Mã phụ huynh do giáo viên cấp, khác với mã học sinh của con. Mã này chỉ để xem, không làm bài được.</p>
+          <p className="small muted">Mã phụ huynh là mã học sinh của con, thêm chữ “ph” trước 4 số cuối: con dùng baoan7305 thì phụ huynh nhập baoanph7305. Mã này chỉ để xem, không làm bài được.</p>
         </div>
         <form className="stack" onSubmit={onSubmit} noValidate>
           <div className="field">

@@ -51,7 +51,7 @@ export const DONE: { area: string; icon: string; items: string[] }[] = [
       "Kết quả ghi thời gian làm bài của từng em",
       "Thống kê → Xếp hạng IELTS (Listening, Reading, Writing): lọc theo lớp, kỹ năng, từng bài; ẩn tên dạng Xxxxx + 4 số",
       "Thống kê → Chuyên cần: tỷ lệ bài đã làm / bài được giao của từng em, theo thư mục",
-      "Mã phụ huynh cho từng em; phụ huynh chỉ xem kết quả của con (tiến độ, % hoàn thành, bài chưa làm, điểm IELTS & Global Success) tại /phu-huynh, không thấy bảng xếp hạng",
+      "Mã phụ huynh = mã học sinh thêm “ph” trước 4 số cuối (thanhtoan3580 → thanhtoanph3580); phụ huynh chỉ xem kết quả của con (tiến độ, % hoàn thành, bài chưa làm, điểm IELTS & Global Success) tại /phu-huynh, không thấy bảng xếp hạng",
       "Học sinh xem thứ hạng IELTS của mình trong lớp ngay trên trang học tập (tên các bạn khác được ẩn)",
       "Đáp án chỉ hiện cho những câu học sinh đã làm và nộp; câu bỏ trống không hiện đáp án",
       "Trang hướng dẫn sử dụng có hình minh hoạ",

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { lastTwoWords, noMarks, normCode, parseStudentLines, phoneCode } from "@/convex/model";
+import { lastTwoWords, noMarks, normCode, parentCodeFor, parseStudentLines, phoneCode } from "@/convex/model";
 import { downloadXlsx, readClassList, rowsFrom, type ClassListRow, type SheetTable } from "@/lib/excel";
 import { copyText, errMsg, stamp } from "@/lib/ui";
 import { Modal, useAdmin, useRun } from "./AdminShell";
@@ -20,9 +20,9 @@ export default function Students() {
   const students = useQuery(api.admin.students, { token });
   const folders = useQuery(api.admin.folders, { token });
   const regen = useMutation(api.admin.regenerateCode);
-  const regenParent = useMutation(api.stats.regenerateParentCode);
   const fillParents = useMutation(api.stats.fillParentCodes);
-  const missingParent = (students ?? []).filter((s) => !s.parentCode).length;
+  // Parent code = student code with "ph" before the last 4 digits; flags any that are out of step.
+  const missingParent = (students ?? []).filter((s) => s.parentCode !== parentCodeFor(s.code)).length;
   const del = useMutation(api.admin.deleteStudent);
   const setFolders = useMutation(api.admin.setStudentsFolders);
 
@@ -89,8 +89,8 @@ export default function Students() {
         </div>
         <div className="actions">
           {missingParent > 0 && (
-            <button className="btn btn-ghost btn-sm" type="button" onClick={() => run(() => fillParents({ token }), "Đã tạo mã phụ huynh cho các em còn thiếu.")}>
-              Tạo mã phụ huynh ({missingParent} em)
+            <button className="btn btn-ghost btn-sm" type="button" onClick={() => run(() => fillParents({ token }), "Đã cập nhật mã phụ huynh.")}>
+              Cập nhật mã phụ huynh ({missingParent} em)
             </button>
           )}
           <button className="btn btn-ghost btn-sm" type="button" onClick={() => setBulk(true)} disabled={!folders}>
@@ -182,7 +182,7 @@ export default function Students() {
                 <th>Họ tên</th>
                 <th>Lớp</th>
                 <th>Mã</th>
-                <th>Mã phụ huynh</th>
+                <th title="Mã học sinh, thêm “ph” trước 4 số cuối">Mã phụ huynh</th>
                 <th>Thư mục</th>
                 <th className="num">Bài đã nộp</th>
                 <th>Trạng thái</th>
@@ -205,18 +205,6 @@ export default function Students() {
                   </td>
                   <td>
                     {s.parentCode ? <code>{s.parentCode}</code> : <span className="muted tiny">Chưa có</span>}
-                    <button
-                      className="link-btn"
-                      type="button"
-                      style={{ display: "block" }}
-                      onClick={async () => {
-                        if (s.parentCode && !confirm(`Tạo mã phụ huynh mới cho ${s.name}? Mã cũ sẽ không dùng được nữa.`)) return;
-                        const c = await run(() => regenParent({ token, id: s._id }));
-                        if (c) toast(`Mã phụ huynh của ${s.name}: ${c}`);
-                      }}
-                    >
-                      {s.parentCode ? "Đổi mã PH" : "Tạo mã PH"}
-                    </button>
                   </td>
                   <td>
                     {s.folders.length ? (
@@ -243,9 +231,9 @@ export default function Students() {
                         className="link-btn"
                         type="button"
                         onClick={async () => {
-                          if (!confirm(`Tạo mã mới cho ${s.name}? Mã cũ "${s.code}" sẽ không dùng được nữa.`)) return;
+                          if (!confirm(`Tạo mã mới cho ${s.name}? Mã cũ "${s.code}" và mã phụ huynh "${s.parentCode ?? ""}" sẽ không dùng được nữa.`)) return;
                           const code = await run(() => regen({ token, id: s._id }));
-                          if (code) toast(`Mã mới của ${s.name}: ${code}`);
+                          if (code) toast(`Mã mới của ${s.name}: ${code} · phụ huynh: ${parentCodeFor(code)}`);
                         }}
                       >
                         Đổi mã

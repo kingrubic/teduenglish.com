@@ -1,8 +1,8 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-import { allFolders, canOpen, fail, requireAdmin } from "./lib";
-import { bandFor, hasEssay, lastTwoWords, maskedName, normCode, percent, rankBy, writingTestBand, type IeltsSkill } from "./model";
+import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { allFolders, canOpen, requireAdmin } from "./lib";
+import { bandFor, hasEssay, maskedName, normCode, parentCodeFor, percent, rankBy, writingTestBand, type IeltsSkill } from "./model";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -170,42 +170,28 @@ export async function parentByCode(ctx: Ctx, code: string) {
   return ctx.db.query("students").withIndex("by_parentCode", (q) => q.eq("parentCode", c)).first();
 }
 
-/** "baoan" + "ph" + 4 digits; never equal to a student code. */
-export async function generateParentCode(ctx: Ctx, name: string) {
-  const base = (lastTwoWords(name) || "hs") + "ph";
-  for (let i = 0; i < 50; i++) {
-    const code = base + String(Math.floor(1000 + Math.random() * 9000));
-    const clash =
-      (await parentByCode(ctx, code)) || (await ctx.db.query("students").withIndex("by_code", (q) => q.eq("code", code)).first());
-    if (!clash) return code;
-  }
-  return base + Math.random().toString(36).slice(2, 8);
+/** Keeps a student's parent code in step with their student code; returns true when it changed. */
+export async function syncParentCode(ctx: MutationCtx, s: Doc<"students">) {
+  const parentCode = parentCodeFor(s.code);
+  if (s.parentCode === parentCode) return false;
+  await ctx.db.patch(s._id, { parentCode });
+  return true;
 }
 
-/** Gives every student without one a parent code. */
+/** Recomputes every parent code from the student code (e.g. after the format changed). */
+async function syncAll(ctx: MutationCtx) {
+  let n = 0;
+  for (const s of await ctx.db.query("students").collect()) if (await syncParentCode(ctx, s)) n++;
+  return n;
+}
+
 export const fillParentCodes = mutation({
   args: { token: v.string() },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.token);
-    let n = 0;
-    for (const s of await ctx.db.query("students").collect())
-      if (!s.parentCode) {
-        await ctx.db.patch(s._id, { parentCode: await generateParentCode(ctx, s.name) });
-        n++;
-      }
-    return n;
+    return syncAll(ctx);
   },
 });
 
-export const regenerateParentCode = mutation({
-  args: { token: v.string(), id: v.id("students") },
-  handler: async (ctx, args) => {
-    await requireAdmin(ctx, args.token);
-    const s = await ctx.db.get(args.id);
-    if (!s) fail("Không tìm thấy học sinh.");
-    const code = await generateParentCode(ctx, s.name);
-    await ctx.db.patch(s._id, { parentCode: code });
-    for (const p of await ctx.db.query("parentSessions").withIndex("by_student", (q) => q.eq("studentId", s._id)).collect()) await ctx.db.delete(p._id);
-    return code;
-  },
-});
+/** npx convex run stats:syncParentCodes */
+export const syncParentCodes = internalMutation({ args: {}, handler: (ctx) => syncAll(ctx) });

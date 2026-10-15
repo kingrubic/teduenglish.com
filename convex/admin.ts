@@ -20,9 +20,8 @@ import {
   studentByCode,
   verifyPassword,
 } from "./lib";
-import { generateParentCode } from "./stats";
 import { accentValidator, essayReviewValidator, ieltsValidator, resourceKindValidator, sectionValidator, termValidator, timerValidator } from "./schema";
-import { MAX_PDF_BYTES, formatBytes, hasEssay, isCorrect, normCode, questionCount, slugify, validateSections, wordCount, writingBand } from "./model";
+import { MAX_PDF_BYTES, formatBytes, hasEssay, isCorrect, normCode, parentCodeFor, questionCount, slugify, validateSections, wordCount, writingBand } from "./model";
 
 const tokenArg = { token: v.string() };
 
@@ -339,12 +338,13 @@ export const saveStudent = mutation({
     if (args.id) {
       const prev = await ctx.db.get(args.id);
       if (!prev) fail("Không tìm thấy học sinh.");
-      await ctx.db.patch(args.id, data);
+      await ctx.db.patch(args.id, { ...data, parentCode: parentCodeFor(code) });
       // Changing the code or locking the student signs them out everywhere.
       if (prev.code !== code || !args.active) await clearStudentSessions(ctx, args.id);
+      if (prev.code !== code) await clearParentSessions(ctx, args.id);
       return { id: args.id, code };
     }
-    const id = await ctx.db.insert("students", { ...data, parentCode: await generateParentCode(ctx, name), createdAt: Date.now() });
+    const id = await ctx.db.insert("students", { ...data, parentCode: parentCodeFor(code), createdAt: Date.now() });
     return { id, code };
   },
 });
@@ -382,7 +382,7 @@ export const bulkCreateStudents = mutation({
           continue;
         }
       } else code = await generateStudentCode(ctx, name, r.style ?? "first");
-      const parentCode = await generateParentCode(ctx, name);
+      const parentCode = parentCodeFor(code);
       await ctx.db.insert("students", { name, className, code, parentCode, folders, active: true, note: "", createdAt: Date.now() });
       created.push({ name, className, code, parentCode });
     }
@@ -397,8 +397,9 @@ export const regenerateCode = mutation({
     const s = await ctx.db.get(args.id);
     if (!s) fail("Không tìm thấy học sinh.");
     const code = await generateStudentCode(ctx, s.name);
-    await ctx.db.patch(s._id, { code });
+    await ctx.db.patch(s._id, { code, parentCode: parentCodeFor(code) });
     await clearStudentSessions(ctx, s._id);
+    await clearParentSessions(ctx, s._id);
     return code;
   },
 });
@@ -428,12 +429,16 @@ async function clearStudentSessions(ctx: MutationCtx, id: Id<"students">) {
     await ctx.db.delete(s._id);
 }
 
+async function clearParentSessions(ctx: MutationCtx, id: Id<"students">) {
+  for (const p of await ctx.db.query("parentSessions").withIndex("by_student", (q) => q.eq("studentId", id)).collect()) await ctx.db.delete(p._id);
+}
+
 export const deleteStudent = mutation({
   args: { token: v.string(), id: v.id("students") },
   handler: async (ctx, args) => {
     await requireAdmin(ctx, args.token);
     await clearStudentSessions(ctx, args.id);
-    for (const p of await ctx.db.query("parentSessions").withIndex("by_student", (q) => q.eq("studentId", args.id)).collect()) await ctx.db.delete(p._id);
+    await clearParentSessions(ctx, args.id);
     for (const a of await ctx.db.query("attempts").withIndex("by_student", (q) => q.eq("studentId", args.id)).collect())
       await ctx.db.delete(a._id);
     for (const u of await ctx.db.query("quizUnlocks").withIndex("by_student_quiz", (q) => q.eq("studentId", args.id)).collect())

@@ -192,6 +192,14 @@ describe("statistics", () => {
     expect(roundBand(6.2)).toBe(6);
   });
 
+  it("derives the parent code from the student code", async () => {
+    const { parentCodeFor } = await import("@/convex/model");
+    expect(parentCodeFor("thanhtoan3580")).toBe("thanhtoanph3580");
+    expect(parentCodeFor("baoan0048")).toBe("baoanph0048");
+    expect(parentCodeFor("an12345")).toBe("an1ph2345");
+    expect(parentCodeFor("baoan")).toBe("baoanph");
+  });
+
   it("ranks with ties sharing a place", async () => {
     const { rankBy, maskedName } = await import("@/convex/model");
     const r = rankBy([{ n: "a", v: 7 }, { n: "b", v: 8.5 }, { n: "c", v: 7 }, { n: "d", v: 6 }], (x) => x.v);
