@@ -20,7 +20,7 @@ import {
   isMastered,
   studentQuizAttempts,
 } from "./lib";
-import { progressFor } from "./stats";
+import { classRanking, progressFor } from "./stats";
 import { MAX_ESSAY_CHARS, bandFor, grade, hasEssay, isAnswered, isCorrect, normCode, wordCount, type Answers } from "./model";
 
 const token = v.optional(v.string());
@@ -70,6 +70,15 @@ export const home = query({
         progress: await progressFor(ctx, student),
       },
     };
+  },
+});
+
+/** The student's IELTS place in their class. Students only: the parent view has no ranking. */
+export const ranking = query({
+  args: { token },
+  handler: async (ctx, args) => {
+    const student = await studentFromToken(ctx, args.token);
+    return student ? classRanking(ctx, student) : null;
   },
 });
 
@@ -303,15 +312,20 @@ export const submit = mutation({
       await ctx.db.patch(student!._id, { lastSeenAt: now });
     }
 
-    const review: Record<string, { ok: boolean; answered: boolean; answer: number | string; explain: string; essay: boolean }> = {};
+    // Answers and explanations only for questions the student actually answered; a blank
+    // question keeps its answer hidden so it can't be copied on the next try or passed on.
+    // The teacher's preview still shows every answer.
+    const review: Record<string, { ok: boolean; answered: boolean; answer: number | string | null; explain: string; essay: boolean }> = {};
     quiz.sections.forEach((sec, si) =>
       sec.questions.forEach((q, qi) => {
         const key = `${si}-${qi}`;
+        const answered = isAnswered(q, answers[key]);
+        const reveal = (answered || preview) && q.type !== "essay";
         review[key] = {
           ok: isCorrect(q, answers[key]),
-          answered: isAnswered(q, answers[key]),
-          answer: q.type === "mcq" ? q.answer : q.type === "fill" ? q.answer[0] ?? "" : "",
-          explain: q.type === "essay" ? "" : q.explain ?? "",
+          answered,
+          answer: !reveal ? null : q.type === "mcq" ? q.answer : q.type === "fill" ? q.answer[0] ?? "" : null,
+          explain: reveal ? q.explain ?? "" : "",
           essay: q.type === "essay",
         };
       }),

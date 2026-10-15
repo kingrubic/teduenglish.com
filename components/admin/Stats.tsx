@@ -208,7 +208,7 @@ function Ranking() {
       .filter((r) => r.count > 0),
     (r) => Math.round(r.avg * 100),
   );
-  const label = (r: { name: string; code: string }) => (mask ? maskedName(r.code) : r.name);
+  const label = (r: { id: string; name: string }) => (mask ? maskedName(r.id) : r.name);
 
   return (
     <>

@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { allFolders, canOpen, fail, requireAdmin } from "./lib";
-import { bandFor, hasEssay, lastTwoWords, normCode, percent, writingTestBand, type IeltsSkill } from "./model";
+import { bandFor, hasEssay, lastTwoWords, maskedName, normCode, percent, rankBy, writingTestBand, type IeltsSkill } from "./model";
 
 type Ctx = QueryCtx | MutationCtx;
 
@@ -45,6 +45,51 @@ export async function ieltsBoard(ctx: Ctx) {
     }
   }
   return { tests, scores };
+}
+
+export type RankScope = "all" | IeltsSkill;
+export type RankRow = { rank: number; label: string; me: boolean; average: number; tests: number };
+
+/**
+ * IELTS ranking inside the student's class, shown to the student only (parents never see it).
+ * Classmates appear as masked names; tables keep the top 10 plus the student's own row.
+ */
+export async function classRanking(ctx: Ctx, student: Doc<"students">) {
+  const { tests, scores } = await ieltsBoard(ctx);
+  const mine = scores[student._id] ?? {};
+  const classmates = (await ctx.db.query("students").withIndex("by_class", (q) => q.eq("className", student.className)).collect()).filter(
+    (s) => s.active || s._id === student._id,
+  );
+
+  const perTest = tests
+    .filter((t) => mine[t.id] != null)
+    .map((t) => {
+      const ranked = rankBy(
+        classmates.filter((s) => scores[s._id]?.[t.id] != null),
+        (s) => scores[s._id][t.id],
+      );
+      return { id: t.id, title: t.title, skill: t.skill, band: mine[t.id], rank: ranked.find((r) => r.item._id === student._id)!.rank, of: ranked.length };
+    });
+
+  const scopes: { scope: RankScope; myRank: number | null; of: number; table: RankRow[] }[] = [];
+  for (const scope of ["all", "listening", "reading", "writing"] as RankScope[]) {
+    const ids = tests.filter((t) => scope === "all" || t.skill === scope).map((t) => t.id);
+    const avg = (id: string) => {
+      const vals = ids.map((t) => scores[id]?.[t]).filter((x): x is number => x != null);
+      return vals.length ? { average: Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10, tests: vals.length } : null;
+    };
+    const rows = classmates.map((s) => ({ s, a: avg(s._id) })).filter((x): x is { s: Doc<"students">; a: { average: number; tests: number } } => !!x.a);
+    if (!rows.length) continue;
+    const table = rankBy(rows, (x) => x.a.average).map((r) => ({
+      rank: r.rank,
+      label: r.item.s._id === student._id ? student.name : maskedName(r.item.s._id),
+      me: r.item.s._id === student._id,
+      average: r.item.a.average,
+      tests: r.item.a.tests,
+    }));
+    scopes.push({ scope, myRank: table.find((r) => r.me)?.rank ?? null, of: table.length, table: table.filter((r, i) => i < 10 || r.me) });
+  }
+  return { className: student.className, perTest, scopes };
 }
 
 /* ======================= completion (chuyên cần) ======================= */

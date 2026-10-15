@@ -694,7 +694,9 @@ function QuestionCard({
   }
 
   let explain: React.ReactNode = null;
-  if (review) {
+  if (review && review.answer == null) {
+    explain = <p className="explain hidden-answer">🔒 Em chưa làm câu này nên đáp án được ẩn. Đáp án chỉ hiện cho những câu em đã làm và nộp bài.</p>;
+  } else if (review) {
     const right = q.type === "fill" ? String(review.answer) : <Rich text={q.options[review.answer as number] ?? ""} />;
     const given = q.type === "fill" ? (typeof value === "string" ? value : "") : typeof value === "number" ? <Rich text={q.options[value]} /> : "";
     explain = (
@@ -811,6 +813,11 @@ function ResultBlock({
             </span>
           )}
         </div>
+        )}
+        {!writingOnly && !preview && r.unanswered > 0 && (
+          <p className="tiny muted" style={{ marginTop: 8 }}>
+            🔒 Đáp án của {r.unanswered} câu em chưa làm được ẩn. Đáp án chỉ hiện cho những câu em đã làm.
+          </p>
         )}
         <div className="result-actions">
           {locksNow ? (

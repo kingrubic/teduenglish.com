@@ -751,3 +751,6 @@ td code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospac
 .ph-pending summary, .ph-writing summary { font-size: 0.85rem; }
 .ph-pending ul { margin: 8px 0 0; padding-left: 18px; font-size: 0.88rem; display: flex; flex-direction: column; gap: 4px; }
 .ph-me td { background: var(--accent-soft); }
+.explain.hidden-answer { color: var(--muted); font-style: italic; }
+.rank-panel { margin-top: 18px; }
+.rank-panel .speed { align-self: flex-start; }

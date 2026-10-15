@@ -121,11 +121,11 @@ function ParentLogin({ onDone }: { onDone: (token: string) => void }) {
           <h1>
             Theo dõi con học.<span className="hl">Không cần hỏi thầy.</span>
           </h1>
-          <p className="lead">Xem điểm từng bài, thứ hạng IELTS trong lớp, số bài đã làm và tỷ lệ chuyên cần của con, cập nhật ngay khi con nộp bài.</p>
+          <p className="lead">Xem tiến độ học tập, tỷ lệ hoàn thành, các bài con chưa làm và điểm số từng kỹ năng của con, cập nhật ngay khi con nộp bài.</p>
         </div>
         <div className="skill-chips">
+          <span>Tiến độ</span>
           <span>Điểm số</span>
-          <span>Thứ hạng</span>
           <span>Chuyên cần</span>
           <span>Nhận xét</span>
         </div>
@@ -158,7 +158,7 @@ type Overview = NonNullable<FunctionReturnType<typeof api.parent.overview>>;
 
 function Dashboard({ data }: { data: Overview }) {
   const p = data.progress;
-  const r = data.ranking;
+  const sk = data.skills;
   return (
     <>
       <section className="banner view-enter">
@@ -171,11 +171,6 @@ function Dashboard({ data }: { data: Overview }) {
           <span>
             Đã làm {p.done}/{p.total} bài
           </span>
-          {r.myRank != null && (
-            <span>
-              Hạng IELTS {r.myRank}/{r.of} trong lớp
-            </span>
-          )}
         </div>
       </section>
 
@@ -233,70 +228,51 @@ function Dashboard({ data }: { data: Overview }) {
 
         <section className="panel">
           <div>
-            <p className="eyebrow">So với các bạn cùng lớp</p>
-            <h2>Thứ hạng IELTS</h2>
+            <p className="eyebrow">Kết quả riêng của con</p>
+            <h2>Điểm theo kỹ năng</h2>
           </div>
-          {!r.table.length ? (
-            <p className="empty">Con chưa có bài IELTS nào được chấm band.</p>
+          {!sk.ielts.length && !sk.folders.length ? (
+            <p className="empty">Con chưa có bài nào được chấm điểm.</p>
           ) : (
-            <>
-              {r.perTest.length > 0 && (
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Bài</th>
-                        <th className="num">Band</th>
-                        <th className="num">Hạng</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {r.perTest.map((t) => (
-                        <tr key={t.id}>
-                          <td>
-                            <b>{SKILL[t.skill]}</b>
-                            <span className="sub">{t.title}</span>
-                          </td>
-                          <td className="num">
-                            <b>{t.band.toFixed(1)}</b>
-                          </td>
-                          <td className="num">
-                            {t.rank}/{t.of}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <p className="tiny muted">Bảng xếp hạng theo band trung bình các bài IELTS (tên các bạn khác được ẩn):</p>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th className="num">Hạng</th>
-                      <th>Học sinh</th>
-                      <th className="num">Band TB</th>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Kỹ năng / thư mục</th>
+                    <th className="num">Trung bình</th>
+                    <th className="num">Cao nhất</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sk.ielts.map((x) => (
+                    <tr key={x.skill}>
+                      <td>
+                        <b>IELTS {SKILL[x.skill]}</b>
+                        <span className="sub">{x.tests} bài có band</span>
+                      </td>
+                      <td className="num">
+                        <b>Band {x.average.toFixed(1)}</b>
+                      </td>
+                      <td className="num">{x.best.toFixed(1)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {r.table.map((row) => (
-                      <tr key={row.label + row.rank} className={row.me ? "ph-me" : ""}>
-                        <td className="num">{["🥇", "🥈", "🥉"][row.rank - 1] ?? row.rank}</td>
-                        <td>
-                          {row.me ? <b>{row.label} (con)</b> : <span className="mono">{row.label}</span>}
-                          <span className="sub">{row.tests} bài</span>
-                        </td>
-                        <td className="num">
-                          <b>{row.average.toFixed(1)}</b>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
+                  ))}
+                  {sk.folders.map((x) => (
+                    <tr key={x.name}>
+                      <td>
+                        <b>{x.name}</b>
+                        <span className="sub">{x.quizzes} bài đã làm</span>
+                      </td>
+                      <td className="num">
+                        <b>{x.average}%</b>
+                      </td>
+                      <td className="num muted">—</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
+          <p className="tiny muted">IELTS tính theo band cao nhất của mỗi đề; các thư mục khác tính theo điểm cao nhất của mỗi bài.</p>
         </section>
       </div>
 

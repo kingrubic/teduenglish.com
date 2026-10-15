@@ -198,9 +198,14 @@ export function rankBy<T>(items: T[], value: (t: T) => number): { item: T; rank:
   });
 }
 
-/** "Xxxxx" + the last 4 characters of a student code, for rankings shown to others. */
-export function maskedName(code: string): string {
-  return "Xxxxx" + code.slice(-4);
+/**
+ * "Xxxxx" + 4 digits derived from the student's id, for rankings shown to others.
+ * Not the end of the login code: with a classmate's name that would give the code away.
+ */
+export function maskedName(seed: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  return "Xxxxx" + String((h >>> 0) % 10000).padStart(4, "0");
 }
 
 export function percent(done: number, total: number): number {

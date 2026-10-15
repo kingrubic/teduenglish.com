@@ -2,10 +2,13 @@ import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import { folderBySlug, getSettings, randomToken, sha256 } from "./lib";
-import { maskedName, normCode, percent, rankBy, WRITING_CRITERIA } from "./model";
-import { attemptBand, ieltsBoard, parentByCode, progressFor, skillOf } from "./stats";
+import { normCode, percent, WRITING_CRITERIA, type IeltsSkill } from "./model";
+import { attemptBand, parentByCode, progressFor, skillOf } from "./stats";
 
-/* /phu-huynh: parents follow their child with a read-only parent code. */
+/*
+ * /phu-huynh: parents follow their child with a read-only parent code.
+ * Only the child's own results: no ranking or classmates, to keep the pressure off.
+ */
 
 const PARENT_SESSION_MS = 180 * 24 * 60 * 60 * 1000;
 const FAILS_PER_MINUTE = 40;
@@ -63,7 +66,17 @@ export const overview = query({
     const attempts = await ctx.db.query("attempts").withIndex("by_student", (q) => q.eq("studentId", child._id)).collect();
     const byQuiz = new Map<string, Doc<"attempts">[]>();
     for (const a of attempts) (byQuiz.get(a.quizId) ?? byQuiz.set(a.quizId, []).get(a.quizId)!).push(a);
-    const results = [];
+    const results: {
+      id: string;
+      title: string;
+      folder: string;
+      skill: IeltsSkill | null;
+      attempts: number;
+      lastAt: number;
+      best: { correct: number; total: number; pct: number } | null;
+      band: number | null;
+      writing: { status: "pending" | "done"; essays: { prompt: string; band: number | null; criteria: { name: string; band: number }[]; comment: string }[] } | null;
+    }[] = [];
     for (const [quizId, list] of byQuiz) {
       const q = await ctx.db.get(quizId as Doc<"quizzes">["_id"]);
       if (!q) continue;
@@ -100,33 +113,15 @@ export const overview = query({
     }
     results.sort((a, b) => b.lastAt - a.lastAt);
 
-    // IELTS ranking inside the child's class.
-    const { tests, scores } = await ieltsBoard(ctx);
-    const classmates = (await ctx.db.query("students").withIndex("by_class", (q) => q.eq("className", child.className)).collect()).filter((s) => s.active);
-    const avg = (id: string) => {
-      const vals = Object.values(scores[id] ?? {});
-      return vals.length ? vals.reduce((s, x) => s + x, 0) / vals.length : null;
-    };
-    const perTest = tests
-      .filter((t) => scores[child._id]?.[t.id] != null)
-      .map((t) => {
-        const ranked = rankBy(
-          classmates.filter((s) => scores[s._id]?.[t.id] != null),
-          (s) => scores[s._id][t.id],
-        );
-        return { id: t.id, title: t.title, skill: t.skill, band: scores[child._id][t.id], rank: ranked.find((r) => r.item._id === child._id)!.rank, of: ranked.length };
-      });
-    const overall = rankBy(
-      classmates.filter((s) => avg(s._id) != null),
-      (s) => avg(s._id)!,
-    );
-    const table = overall.map((r) => ({
-      rank: r.rank,
-      label: r.item._id === child._id ? child.name : maskedName(r.item.code),
-      me: r.item._id === child._id,
-      average: Math.round(avg(r.item._id)! * 10) / 10,
-      tests: Object.keys(scores[r.item._id] ?? {}).length,
-    }));
+    // Score summary: IELTS by skill (band), other folders such as Global Success by average best %.
+    const avg = (xs: number[]) => Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10;
+    const ielts = (["listening", "reading", "writing"] as IeltsSkill[]).flatMap((skill) => {
+      const bands = results.filter((r) => r.skill === skill && r.band != null).map((r) => r.band!);
+      return bands.length ? [{ skill, tests: bands.length, average: avg(bands), best: Math.max(...bands) }] : [];
+    });
+    const byFolder = new Map<string, number[]>();
+    for (const r of results) if (!r.skill && r.best) (byFolder.get(r.folder) ?? byFolder.set(r.folder, []).get(r.folder)!).push(r.best.pct);
+    const folders = [...byFolder].map(([name, pcts]) => ({ name, quizzes: pcts.length, average: Math.round(avg(pcts)) }));
 
     return {
       child: { name: child.name, className: child.className },
@@ -134,7 +129,7 @@ export const overview = query({
       centerName: settings.centerName,
       progress,
       results,
-      ranking: { perTest, table: table.filter((r, i) => i < 10 || r.me), myRank: table.find((r) => r.me)?.rank ?? null, of: table.length },
+      skills: { ielts, folders },
     };
   },
 });

@@ -196,7 +196,9 @@ describe("statistics", () => {
     const { rankBy, maskedName } = await import("@/convex/model");
     const r = rankBy([{ n: "a", v: 7 }, { n: "b", v: 8.5 }, { n: "c", v: 7 }, { n: "d", v: 6 }], (x) => x.v);
     expect(r.map((x) => `${x.rank}${x.item.n}`)).toEqual(["1b", "2a", "2c", "4d"]);
-    expect(maskedName("thanhtoan0789")).toBe("Xxxxx0789");
+    expect(maskedName("k17abc")).toMatch(/^Xxxxx\d{4}$/);
+    expect(maskedName("k17abc")).toBe(maskedName("k17abc"));
+    expect(maskedName("k17abc")).not.toBe(maskedName("k17abd"));
   });
 
   it("computes completion per folder from submitted quizzes", async () => {

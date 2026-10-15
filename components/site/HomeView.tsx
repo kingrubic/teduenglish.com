@@ -1,6 +1,9 @@
 "use client";
 
+import { useQuery } from "convex/react";
 import Link from "next/link";
+import { useState } from "react";
+import { api } from "@/convex/_generated/api";
 import { firstName } from "@/convex/model";
 import { FolderCard, Loading, LoginForm, Swoosh, doneLabel, type DoneMap, type FolderInfo, type QuizMeta, type ResourceRow } from "./parts";
 import { useSite, type HomeData } from "./SiteShell";
@@ -53,7 +56,7 @@ function Hero({ folders }: { folders: FolderInfo[] }) {
         <p className="tiny muted">Không chia sẻ mã cá nhân. Nếu mã không hoạt động, em nhắn {teacher} để được cấp lại.</p>
         <Link className="track-link" href="/phu-huynh">
           <span>
-            Phụ huynh theo dõi kết quả của con<small>Điểm số, thứ hạng, chuyên cần · cần mã phụ huynh</small>
+            Phụ huynh theo dõi kết quả của con<small>Tiến độ, điểm số, chuyên cần · cần mã phụ huynh</small>
           </span>
           <span aria-hidden="true">→</span>
         </Link>
@@ -178,6 +181,107 @@ function Dashboard({ home }: { home: HomeData }) {
       ) : (
         <p className="empty">Mã của em chưa được mở thư mục nào. Em nhắn {teacher} để được giao bài nhé.</p>
       )}
+      <MyRanking />
     </>
+  );
+}
+
+const SCOPE_LABEL = { all: "Tổng", listening: "Listening", reading: "Reading", writing: "Writing" } as const;
+const SKILL_LABEL = { listening: "Listening", reading: "Reading", writing: "Writing" } as const;
+
+/** The student's IELTS place in class. Only students see this; the parent page has no ranking. */
+function MyRanking() {
+  const { token } = useSite();
+  const data = useQuery(api.site.ranking, token ? { token } : "skip");
+  const [pick, setPick] = useState<keyof typeof SCOPE_LABEL>("all");
+  if (!data || !data.scopes.length) return null;
+  const cur = data.scopes.find((x) => x.scope === pick) ?? data.scopes[0];
+
+  return (
+    <section className="panel rank-panel">
+      <div className="section-head" style={{ margin: 0 }}>
+        <div>
+          <p className="eyebrow">IELTS ranking</p>
+          <h2>Thứ hạng của em trong lớp</h2>
+          <p className="small muted">
+            Lớp {data.className} · xếp theo band trung bình các đề IELTS, tên các bạn khác được ẩn.
+          </p>
+        </div>
+        {cur.myRank != null && (
+          <span className="count-chip">
+            Hạng {cur.myRank}/{cur.of}
+          </span>
+        )}
+      </div>
+      {data.scopes.length > 1 && (
+        <span className="speed" role="group" aria-label="Kỹ năng">
+          {data.scopes.map((x) => (
+            <button key={x.scope} type="button" aria-pressed={cur.scope === x.scope} onClick={() => setPick(x.scope)}>
+              {SCOPE_LABEL[x.scope]}
+            </button>
+          ))}
+        </span>
+      )}
+      {cur.myRank == null && <p className="small muted">Em chưa có bài {cur.scope === "all" ? "IELTS" : SCOPE_LABEL[cur.scope]} nào được tính band.</p>}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th className="num">Hạng</th>
+              <th>Học sinh</th>
+              <th className="num">Band TB</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cur.table.map((row) => (
+              <tr key={row.label + row.rank} className={row.me ? "ph-me" : ""}>
+                <td className="num">{["🥇", "🥈", "🥉"][row.rank - 1] ?? row.rank}</td>
+                <td>
+                  {row.me ? <b>{row.label} (em)</b> : <span className="mono">{row.label}</span>}
+                  <span className="sub">{row.tests} bài</span>
+                </td>
+                <td className="num">
+                  <b>{row.average.toFixed(1)}</b>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data.perTest.some((t) => cur.scope === "all" || t.skill === cur.scope) && (
+        <details>
+          <summary className="small">Hạng của em ở từng đề</summary>
+          <div className="table-wrap" style={{ marginTop: 8 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Đề</th>
+                  <th className="num">Band</th>
+                  <th className="num">Hạng</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.perTest
+                  .filter((t) => cur.scope === "all" || t.skill === cur.scope)
+                  .map((t) => (
+                    <tr key={t.id}>
+                      <td>
+                        <b>{SKILL_LABEL[t.skill]}</b>
+                        <span className="sub">{t.title}</span>
+                      </td>
+                      <td className="num">
+                        <b>{t.band.toFixed(1)}</b>
+                      </td>
+                      <td className="num">
+                        {t.rank}/{t.of}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+    </section>
   );
 }

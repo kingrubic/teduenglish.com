@@ -858,7 +858,7 @@ export default function Guide() {
 }
 
 const FAQ: [string, React.ReactNode][] = [
-  ["Học sinh có xem trước được đáp án không?", "Không. Đáp án và giải thích chỉ nằm trên máy chủ. Trình duyệt của em chỉ nhận đáp án sau khi em bấm Nộp bài."],
+  ["Học sinh có xem trước được đáp án không?", "Không. Đáp án và giải thích chỉ nằm trên máy chủ. Sau khi bấm Nộp bài, em chỉ thấy đáp án của những câu em đã làm; câu bỏ trống vẫn ẩn đáp án (chế độ xem trước của giáo viên thì hiện hết)."],
   [
     "Phần nghe không phát được âm thanh?",
     <>
@@ -868,11 +868,11 @@ const FAQ: [string, React.ReactNode][] = [
   ],
   [
     "Phụ huynh theo dõi con thế nào?",
-    "Mỗi em có một mã phụ huynh riêng (cột “Mã phụ huynh” ở trang Học sinh, có trong file Excel tải về). Phụ huynh vào teduenglish.com/phu-huynh, nhập mã là xem được điểm từng bài, thứ hạng IELTS trong lớp (tên các bạn khác bị ẩn), số bài đã làm/chưa làm, tỷ lệ chuyên cần và nhận xét bài viết. Mã phụ huynh chỉ để xem, không làm bài được.",
+    "Mỗi em có một mã phụ huynh riêng (cột “Mã phụ huynh” ở trang Học sinh, có trong file Excel tải về). Phụ huynh vào teduenglish.com/phu-huynh, nhập mã là xem được kết quả riêng của con: tiến độ, tỷ lệ hoàn thành, các bài chưa làm, điểm IELTS theo kỹ năng và điểm Global Success, cùng nhận xét bài viết. Phụ huynh không thấy bảng xếp hạng. Mã phụ huynh chỉ để xem, không làm bài được.",
   ],
   [
     "Xem bảng xếp hạng và chuyên cần ở đâu?",
-    "Trang Thống kê: thẻ “Chuyên cần” (tỷ lệ bài đã làm / bài được giao, lọc theo lớp và thư mục) và thẻ “Xếp hạng IELTS” (lọc theo lớp, kỹ năng, từng bài; bật “Ẩn tên” khi chiếu cho cả lớp). Cả hai đều tải Excel được. Muốn bài Writing vào bảng xếp hạng: đặt bài trong thư mục IELTS hoặc chọn “IELTS Writing” ở ô Kỹ năng IELTS, và chấm band cho từng Task.",
+    "Trang Thống kê: thẻ “Chuyên cần” (tỷ lệ bài đã làm / bài được giao, lọc theo lớp và thư mục) và thẻ “Xếp hạng IELTS” (lọc theo lớp, kỹ năng, từng bài; bật “Ẩn tên” khi chiếu cho cả lớp). Cả hai đều tải Excel được. Học sinh tự xem thứ hạng IELTS của mình trong lớp ở trang học tập (tên các bạn khác được ẩn); phụ huynh không thấy bảng này. Muốn bài Writing vào bảng xếp hạng: đặt bài trong thư mục IELTS hoặc chọn “IELTS Writing” ở ô Kỹ năng IELTS, và chấm band cho từng Task.",
   ],
   [
     "Vì sao có bài bị mờ đi, học sinh không bấm vào được?",
