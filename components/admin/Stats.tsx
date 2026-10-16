@@ -8,7 +8,7 @@ import { maskedName, percent, rankBy } from "@/convex/model";
 import { downloadXlsx } from "@/lib/excel";
 import { useAdmin } from "./AdminShell";
 
-const SKILL_LABEL: Record<string, string> = { listening: "Listening", reading: "Reading", writing: "Writing" };
+const SKILL_LABEL: Record<string, string> = { listening: "Listening", reading: "Reading", writing: "Writing", speaking: "Speaking" };
 const MEDAL = ["🥇", "🥈", "🥉"];
 
 export default function Stats() {
@@ -233,6 +233,7 @@ function Ranking() {
             <option value="listening">Listening</option>
             <option value="reading">Reading</option>
             <option value="writing">Writing</option>
+            <option value="speaking">Speaking</option>
           </select>
           <select className="select" value={test} onChange={(e) => setTest(e.target.value)} aria-label="Bài kiểm tra">
             <option value="">Tất cả bài {skill ? SKILL_LABEL[skill] : "IELTS"}</option>

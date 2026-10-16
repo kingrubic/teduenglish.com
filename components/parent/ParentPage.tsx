@@ -9,7 +9,7 @@ import { Swoosh } from "@/components/site/parts";
 import { errMsg, sdel, sget, sset, stamp } from "@/lib/ui";
 
 const TOKEN_KEY = "tedu.parent";
-const SKILL: Record<string, string> = { listening: "Listening", reading: "Reading", writing: "Writing" };
+const SKILL: Record<string, string> = { listening: "Listening", reading: "Reading", writing: "Writing", speaking: "Speaking" };
 
 export default function ParentPage() {
   const [token, setToken] = useState<string | null | undefined>(undefined);
@@ -306,7 +306,7 @@ function Dashboard({ data }: { data: Overview }) {
                       </span>
                       {x.writing && (
                         <details className="ph-writing">
-                          <summary>{x.writing.status === "done" ? "✍️ Xem nhận xét bài viết" : "✍️ Bài viết đang chờ thầy cô chấm"}</summary>
+                          <summary>{x.writing.status === "done" ? "✍️ Xem nhận xét của thầy cô" : "✍️ Bài đang chờ thầy cô chấm"}</summary>
                           {x.writing.essays.map((e, i) => (
                             <div key={i} className="mw-review" style={{ marginTop: 8 }}>
                               <p className="tiny muted">{e.prompt}</p>

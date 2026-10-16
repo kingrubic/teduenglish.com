@@ -19,9 +19,10 @@ import {
   studentResource,
   isMastered,
   studentQuizAttempts,
+  recordingIds,
 } from "./lib";
 import { classRanking, progressFor } from "./stats";
-import { MAX_ESSAY_CHARS, bandFor, grade, hasEssay, isAnswered, isCorrect, normCode, wordCount, type Answers } from "./model";
+import { MAX_ESSAY_CHARS, MAX_RECORDING_BYTES, SPEAKING_REVIEW_KEY, bandFor, grade, hasEssay, hasSpeak, isAnswered, isCorrect, normCode, wordCount, type Answers } from "./model";
 
 const token = v.optional(v.string());
 
@@ -162,15 +163,27 @@ export const writing = query({
   handler: async (ctx, args) => {
     const student = await studentFromToken(ctx, args.token);
     const quiz = await quizBySlug(ctx, args.id);
-    if (!student || !quiz || !hasEssay(quiz.sections)) return [];
+    if (!student || !quiz || !(hasEssay(quiz.sections) || hasSpeak(quiz.sections))) return [];
     const attempts = (await ctx.db.query("attempts").withIndex("by_student", (q) => q.eq("studentId", student._id)).order("desc").collect())
       .filter((a) => a.quizId === quiz._id && a.reviewStatus)
       .slice(0, 10);
-    return attempts.map((a) => ({
+    return Promise.all(attempts.map(async (a) => ({
       id: a._id,
       submittedAt: a.submittedAt,
       status: a.reviewStatus!,
       reviewedBy: a.reviewedBy ?? null,
+      speaking: hasSpeak(quiz.sections)
+        ? {
+            purged: !!a.recordingsPurged,
+            recordings: await Promise.all(
+              recordingIds(quiz, a).map(async ([key, id]) => {
+                const [si, qi] = key.split("-").map(Number);
+                return { key, q: quiz.sections[si].questions[qi].q, url: await ctx.storage.getUrl(id) };
+              }),
+            ),
+            review: a.essayReviews?.[SPEAKING_REVIEW_KEY] ?? null,
+          }
+        : null,
       essays: quiz.sections.flatMap((sec, si) =>
         sec.questions.flatMap((q, qi) => {
           if (q.type !== "essay") return [];
@@ -180,11 +193,25 @@ export const writing = query({
           return [{ key, prompt: q.q, text, words: wordCount(text), minWords: q.minWords ?? 0, comment: review?.comment ?? "", band: review?.band ?? null, criteria: review?.criteria ?? null }];
         }),
       ),
-    }));
+    })));
   },
 });
 
 /* ---------- writes ---------- */
+
+/** Upload link for one Speaking answer; only for a student who may take this test right now. */
+export const speakUploadUrl = mutation({
+  args: { token, id: v.string() },
+  handler: async (ctx, args) => {
+    const quiz = await quizBySlug(ctx, args.id);
+    const student = await studentFromToken(ctx, args.token);
+    if (!quiz || !student || !quiz.published || !canOpen(student, quiz.folder) || !hasSpeak(quiz.sections))
+      fail("Phiên đăng nhập đã hết hạn, em đăng nhập lại để làm bài nói.");
+    const { lockAtPercent } = await getSettings(ctx);
+    if (isMastered(await studentQuizAttempts(ctx, student._id, quiz._id), lockAtPercent)) fail("Bài này đã được khoá.");
+    return ctx.storage.generateUploadUrl();
+  },
+});
 
 const STUDENT_FAILS_PER_MINUTE = 40;
 
@@ -291,9 +318,22 @@ export const submit = mutation({
         if (q.type === "mcq" && typeof val === "number") answers[key] = val;
         if (q.type === "fill" && typeof val === "string") answers[key] = val.slice(0, 300);
         if (q.type === "essay" && typeof val === "string" && val.trim()) answers[key] = val.slice(0, MAX_ESSAY_CHARS);
+        if (q.type === "speak" && !preview && typeof val === "string" && val) answers[key] = val; // checked below
       }),
     );
-    const wroteEssay = quiz.sections.some((sec, si) => sec.questions.some((q, qi) => q.type === "essay" && wordCount(answers[`${si}-${qi}`]) > 0));
+    // Speaking: each answer is the id of an uploaded recording; drop anything that isn't a real, small audio file.
+    let spoke = false;
+    for (const [key, val] of Object.entries(answers)) {
+      const [si, qi] = key.split("-").map(Number);
+      if (quiz.sections[si]?.questions[qi]?.type !== "speak") continue;
+      const id = ctx.db.system.normalizeId("_storage", String(val));
+      const meta = id ? await ctx.db.system.get(id) : null;
+      if (id && meta && (meta.contentType ?? "").startsWith("audio/") && meta.size <= MAX_RECORDING_BYTES) {
+        answers[key] = id;
+        spoke = true;
+      } else delete answers[key];
+    }
+    const wroteEssay = spoke || quiz.sections.some((sec, si) => sec.questions.some((q, qi) => q.type === "essay" && wordCount(answers[`${si}-${qi}`]) > 0));
 
     const result = grade(quiz.sections, answers);
     const band = bandFor(quiz.ielts, result.correct, result.total);
@@ -320,13 +360,13 @@ export const submit = mutation({
       sec.questions.forEach((q, qi) => {
         const key = `${si}-${qi}`;
         const answered = isAnswered(q, answers[key]);
-        const reveal = (answered || preview) && q.type !== "essay";
+        const reveal = (answered || preview) && q.type !== "essay" && q.type !== "speak";
         review[key] = {
           ok: isCorrect(q, answers[key]),
           answered,
           answer: !reveal ? null : q.type === "mcq" ? q.answer : q.type === "fill" ? q.answer[0] ?? "" : null,
           explain: reveal ? q.explain ?? "" : "",
-          essay: q.type === "essay",
+          essay: q.type === "essay" || q.type === "speak",
         };
       }),
     );

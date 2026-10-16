@@ -186,8 +186,8 @@ function Dashboard({ home }: { home: HomeData }) {
   );
 }
 
-const SCOPE_LABEL = { all: "Tổng", listening: "Listening", reading: "Reading", writing: "Writing" } as const;
-const SKILL_LABEL = { listening: "Listening", reading: "Reading", writing: "Writing" } as const;
+const SCOPE_LABEL = { all: "Tổng", listening: "Listening", reading: "Reading", writing: "Writing", speaking: "Speaking" } as const;
+const SKILL_LABEL = { listening: "Listening", reading: "Reading", writing: "Writing", speaking: "Speaking" } as const;
 
 /** The student's IELTS place in class. Only students see this; the parent page has no ranking. */
 function MyRanking() {

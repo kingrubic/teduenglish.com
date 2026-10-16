@@ -192,6 +192,21 @@ describe("statistics", () => {
     expect(roundBand(6.2)).toBe(6);
   });
 
+  it("keeps Speaking answers out of auto-grading and checks Speaking tests", async () => {
+    const { grade, isAnswered, bandFor, validateSections, hasSpeak } = await import("@/convex/model");
+    const speak = { type: "speak" as const, q: "Where is your hometown?", answerSec: 30 };
+    const sections = [{ title: "Part 1", questions: [speak, { ...speak, q: "Do you like it?" }] }];
+    expect(hasSpeak(sections)).toBe(true);
+    expect(grade(sections, { "0-0": "kg2abc" })).toEqual({ correct: 0, total: 0, wrong: 0, unanswered: 0 });
+    expect(isAnswered(speak, "kg2abc")).toBe(true);
+    expect(isAnswered(speak, "")).toBe(false);
+    expect(bandFor("speaking", 3, 4)).toBeNull();
+    expect(validateSections(sections)).toEqual([]);
+    expect(validateSections([{ title: "P", questions: [{ ...speak, answerSec: 2 }] }])[0]).toMatch(/5 đến 300/);
+    const mixed = [{ title: "P", questions: [speak, { type: "mcq" as const, q: "x", options: ["a", "b"], answer: 0 }] }];
+    expect(validateSections(mixed).join()).toMatch(/chỉ gồm câu hỏi dạng/);
+  });
+
   it("derives the parent code from the student code", async () => {
     const { parentCodeFor } = await import("@/convex/model");
     expect(parentCodeFor("thanhtoan3580")).toBe("thanhtoanph3580");

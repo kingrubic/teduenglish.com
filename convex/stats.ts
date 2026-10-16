@@ -2,20 +2,22 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { allFolders, canOpen, requireAdmin } from "./lib";
-import { bandFor, hasEssay, maskedName, normCode, parentCodeFor, percent, rankBy, writingTestBand, type IeltsSkill } from "./model";
+import { SPEAKING_REVIEW_KEY, bandFor, hasEssay, hasSpeak, maskedName, normCode, parentCodeFor, percent, rankBy, writingTestBand, type IeltsSkill } from "./model";
 
 type Ctx = QueryCtx | MutationCtx;
 
 /* ======================= IELTS bands ======================= */
 
-/** Listening/Reading from the quiz setting; Writing for tests with essays in the IELTS folder (or marked so). */
+/** From the quiz setting; otherwise Speaking/Writing for recorded or written tests in the IELTS folder. */
 export function skillOf(q: Doc<"quizzes">): IeltsSkill | null {
   if (q.ielts) return q.ielts;
-  return q.folder === "ielts" && hasEssay(q.sections) ? "writing" : null;
+  if (q.folder !== "ielts") return null;
+  return hasSpeak(q.sections) ? "speaking" : hasEssay(q.sections) ? "writing" : null;
 }
 
-/** Band of one attempt; Writing needs every task marked with a band. */
+/** Band of one attempt; Writing needs every task marked, Speaking the teacher's overall band. */
 export function attemptBand(q: Doc<"quizzes">, a: Doc<"attempts">, skill: IeltsSkill): number | null {
+  if (skill === "speaking") return a.essayReviews?.[SPEAKING_REVIEW_KEY]?.band ?? null;
   if (skill !== "writing") return a.band ?? bandFor(skill, a.correct, a.total);
   const tasks: (number | undefined)[] = [];
   q.sections.forEach((sec, si) =>
@@ -72,7 +74,7 @@ export async function classRanking(ctx: Ctx, student: Doc<"students">) {
     });
 
   const scopes: { scope: RankScope; myRank: number | null; of: number; table: RankRow[] }[] = [];
-  for (const scope of ["all", "listening", "reading", "writing"] as RankScope[]) {
+  for (const scope of ["all", "listening", "reading", "writing", "speaking"] as RankScope[]) {
     const ids = tests.filter((t) => scope === "all" || t.skill === scope).map((t) => t.id);
     const avg = (id: string) => {
       const vals = ids.map((t) => scores[id]?.[t]).filter((x): x is number => x != null);

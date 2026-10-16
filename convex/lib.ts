@@ -1,7 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { firstName, hasEssay, lastTwoWords, noMarks, normCode, questionCount } from "./model";
+import { firstName, hasEssay, hasSpeak, lastTwoWords, noMarks, normCode, questionCount } from "./model";
 
 export const STUDENT_SESSION_MS = 180 * 24 * 60 * 60 * 1000;
 export const ADMIN_SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -155,6 +155,8 @@ export function quizMeta(quiz: Doc<"quizzes">) {
     ielts: quiz.ielts ?? null,
     questionCount: questionCount(quiz.sections),
     hasEssay: hasEssay(quiz.sections),
+    hasSpeak: hasSpeak(quiz.sections),
+    speakPrep: quiz.speakPrep ?? 15,
     timer: quiz.timer ?? (quiz.minutes > 0 ? "count" : "off"),
     accent: quiz.accent ?? "uk",
     term: quiz.term ?? null,
@@ -174,6 +176,7 @@ export async function publicSections(ctx: Ctx, quiz: Doc<"quizzes">) {
           const image = q.image ? { name: q.image.name, url: await ctx.storage.getUrl(q.image.storageId) } : null;
           if (q.type === "mcq") return { type: "mcq" as const, tag: q.tag ?? "", q: q.q, image, options: q.options };
           if (q.type === "fill") return { type: "fill" as const, tag: q.tag ?? "", q: q.q, image };
+          if (q.type === "speak") return { type: "speak" as const, tag: q.tag ?? "", q: q.q, image, answerSec: q.answerSec, prepSec: q.prepSec ?? 0 };
           return { type: "essay" as const, tag: q.tag ?? "", q: q.q, image, minWords: q.minWords ?? 0, tip: q.explain ?? "" };
         }),
       ),
@@ -187,6 +190,18 @@ export function quizImageIds(sections: Doc<"quizzes">["sections"]): Id<"_storage
 
 export function quizAudioIds(sections: Doc<"quizzes">["sections"]): Id<"_storage">[] {
   return sections.flatMap((s) => (s.audio ? [s.audio.storageId] : []));
+}
+
+/** Storage ids of an attempt's Speaking recordings, by answer key. */
+export function recordingIds(quiz: Doc<"quizzes">, a: Doc<"attempts">): [string, Id<"_storage">][] {
+  const out: [string, Id<"_storage">][] = [];
+  quiz.sections.forEach((s, si) =>
+    s.questions.forEach((q, qi) => {
+      const v = a.answers[`${si}-${qi}`];
+      if (q.type === "speak" && typeof v === "string" && v) out.push([`${si}-${qi}`, v as Id<"_storage">]);
+    }),
+  );
+  return out;
 }
 
 /** Every uploaded file a quiz uses: question images and listening audio. */

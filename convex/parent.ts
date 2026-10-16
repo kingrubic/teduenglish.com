@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import { folderBySlug, getSettings, randomToken, sha256 } from "./lib";
-import { normCode, percent, WRITING_CRITERIA, type IeltsSkill } from "./model";
+import { SPEAKING_CRITERIA, SPEAKING_REVIEW_KEY, WRITING_CRITERIA, hasSpeak, normCode, percent, type IeltsSkill } from "./model";
 import { attemptBand, parentByCode, progressFor, skillOf } from "./stats";
 
 /*
@@ -99,6 +99,14 @@ export const overview = query({
             });
           }),
         );
+      const spoken = lastWriting?.essayReviews?.[SPEAKING_REVIEW_KEY];
+      if (lastWriting && hasSpeak(q.sections))
+        essays.push({
+          prompt: "Bài nói (Speaking)",
+          band: spoken?.band ?? null,
+          criteria: (spoken?.criteria ?? []).map((b, i) => ({ name: SPEAKING_CRITERIA[i], band: b })),
+          comment: spoken?.comment ?? "",
+        });
       results.push({
         id: q.slug,
         title: q.title,
@@ -115,7 +123,7 @@ export const overview = query({
 
     // Score summary: IELTS by skill (band), other folders such as Global Success by average best %.
     const avg = (xs: number[]) => Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10) / 10;
-    const ielts = (["listening", "reading", "writing"] as IeltsSkill[]).flatMap((skill) => {
+    const ielts = (["listening", "reading", "writing", "speaking"] as IeltsSkill[]).flatMap((skill) => {
       const bands = results.filter((r) => r.skill === skill && r.band != null).map((r) => r.band!);
       return bands.length ? [{ skill, tests: bands.length, average: avg(bands), best: Math.max(...bands) }] : [];
     });

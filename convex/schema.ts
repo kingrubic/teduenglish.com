@@ -15,6 +15,8 @@ export const questionValidator = v.union(
   v.object({ type: v.literal("fill"), ...questionBase, answer: v.array(v.string()) }),
   // Free writing (e.g. IELTS Writing), marked by a teacher.
   v.object({ type: v.literal("essay"), ...questionBase, minWords: v.optional(v.number()) }),
+  // Spoken answer, recorded in the browser and marked by a teacher (IELTS Speaking).
+  v.object({ type: v.literal("speak"), ...questionBase, answerSec: v.number(), prepSec: v.optional(v.number()) }),
 );
 
 export const essayReviewValidator = v.object({
@@ -33,7 +35,7 @@ export const sectionValidator = v.object({
 });
 
 export const ieltsValidator = v.optional(
-  v.union(v.literal("listening"), v.literal("reading"), v.literal("writing")),
+  v.union(v.literal("listening"), v.literal("reading"), v.literal("writing"), v.literal("speaking")),
 );
 
 export const termValidator = v.optional(v.union(v.literal("hk1"), v.literal("hk2")));
@@ -130,6 +132,7 @@ export default defineSchema({
     // "count": countdown only; "auto": submit when time is up. Unset → "count" when minutes > 0.
     timer: timerValidator,
     accent: accentValidator, // listening voice, default "uk"
+    speakPrep: v.optional(v.number()), // Speaking: seconds to get ready before the first question (15 or 30)
     term: termValidator, // semester group inside the folder
     order: v.number(),
     sections: v.array(sectionValidator),
@@ -158,6 +161,8 @@ export default defineSchema({
     reviewStatus: v.optional(v.union(v.literal("pending"), v.literal("done"))),
     // Set when a teacher lets the student retake a quiz they had mastered.
     reopened: v.optional(v.boolean()),
+    // Speaking recordings were deleted after the keep period (answers then hold "").
+    recordingsPurged: v.optional(v.boolean()),
     essayReviews: v.optional(v.record(v.string(), essayReviewValidator)),
     reviewedAt: v.optional(v.number()),
     reviewedBy: v.optional(v.string()),

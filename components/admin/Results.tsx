@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { WRITING_CRITERIA, writingBand } from "@/convex/model";
+import { SPEAKING_CRITERIA, SPEAKING_REVIEW_KEY, WRITING_CRITERIA, writingBand } from "@/convex/model";
 import { downloadXlsx } from "@/lib/excel";
 import { Rich, errMsg, stamp } from "@/lib/ui";
 import { Modal, useAdmin, useRun } from "./AdminShell";
@@ -246,6 +246,7 @@ function AttemptDetail({ id, onClose }: { id: Id<"attempts">; onClose: () => voi
             )}
             {a.band != null ? ` · Band ${a.band.toFixed(1)}` : ""}
           </p>
+          {a.speaking && <SpeakingReview key={a.id + (a.reviewedAt ?? "")} attempt={a} onDone={onClose} />}
           {a.essays.length > 0 && <EssayReview key={a.id + (a.reviewedAt ?? "")} attempt={a} onDone={onClose} />}
           {a.questions.length > 0 && (
             <div className="table-wrap">
@@ -425,6 +426,103 @@ function EssayReview({ attempt, onDone }: { attempt: Detail; onDone: () => void 
       <div className="modal-foot">
         <button className="btn btn-primary" type="button" onClick={submit} disabled={busy}>
           {busy ? "Đang lưu…" : attempt.reviewedAt ? "Cập nhật nhận xét" : "Lưu nhận xét & trả bài"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Teacher marking for a Speaking test: listen to each answer, then one comment and the four IELTS Speaking criteria. */
+function SpeakingReview({ attempt, onDone }: { attempt: Detail; onDone: () => void }) {
+  const { token, toast } = useAdmin();
+  const save = useMutation(api.admin.reviewAttempt);
+  const sp = attempt.speaking!;
+  const [comment, setComment] = useState(sp.review?.comment ?? "");
+  const [criteria, setCriteria] = useState<string[]>(sp.review?.criteria?.map((c) => c.toFixed(1)) ?? ["", "", "", ""]);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const overall = criteria.every((c) => c !== "") ? writingBand(criteria.map(Number)) : null;
+  const answered = sp.items.filter((i) => i.url).length;
+
+  async function submit() {
+    if (criteria.some((c) => c === "") && criteria.some((c) => c !== "")) return setErr("Chấm đủ 4 tiêu chí, hoặc để trống cả 4 nếu chỉ nhận xét.");
+    setBusy(true);
+    try {
+      const all = criteria.every((c) => c !== "");
+      await save({ token, id: attempt.id, reviews: { [SPEAKING_REVIEW_KEY]: { comment, ...(all ? { criteria: criteria.map(Number) } : {}) } } });
+      toast("Đã lưu nhận xét. Học sinh thấy ngay ở trang bài làm.");
+      onDone();
+    } catch (e) {
+      setErr(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="stack">
+      {attempt.reviewedAt && (
+        <p className="alert alert-good">
+          Đã chấm lúc {stamp(attempt.reviewedAt)}
+          {attempt.reviewedBy ? ` bởi ${attempt.reviewedBy}` : ""}. Thầy cô có thể sửa rồi lưu lại.
+        </p>
+      )}
+      <section className="essay-review">
+        <p className="eyebrow">
+          Bài nói · {answered}/{sp.items.length} câu có ghi âm
+        </p>
+        {sp.purged && <p className="small muted">Ghi âm đã tự xoá sau 90 ngày; điểm và nhận xét vẫn còn.</p>}
+        <div className="speak-replay">
+          {sp.items.map((it) => (
+            <div key={it.key} className="speak-replay-row">
+              <span className="small">
+                <b>Câu {it.num}.</b> {it.q.split("\n")[0]} <span className="tiny muted">· {it.section} · {it.answerSec}s</span>
+              </span>
+              {it.url ? <audio controls preload="none" src={it.url} /> : <span className="tiny muted">{sp.purged ? "(đã xoá)" : "(không có ghi âm)"}</span>}
+            </div>
+          ))}
+        </div>
+        <div className="field">
+          <label htmlFor="rv-speaking">Nhận xét cho học sinh</label>
+          <textarea
+            className="textarea prose"
+            id="rv-speaking"
+            rows={5}
+            value={comment}
+            onChange={(ev) => setComment(ev.target.value)}
+            placeholder="Độ trôi chảy, từ vựng, ngữ pháp, phát âm; gợi ý nâng band…"
+          />
+        </div>
+        <div className="criteria-grid">
+          {SPEAKING_CRITERIA.map((c, i) => (
+            <label key={c} className="field">
+              <span className="tiny" style={{ fontWeight: 700 }}>
+                {c}
+              </span>
+              <select className="select compact" value={criteria[i]} onChange={(ev) => setCriteria(criteria.map((x, j) => (j === i ? ev.target.value : x)))}>
+                <option value="">—</option>
+                {BAND_STEPS.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+          <div className="field">
+            <span className="tiny" style={{ fontWeight: 700 }}>
+              Band Speaking
+            </span>
+            <b className="overall-band">{overall != null ? overall.toFixed(1) : "—"}</b>
+          </div>
+        </div>
+      </section>
+      <p className="alert alert-bad" role="alert" hidden={!err}>
+        {err}
+      </p>
+      <div className="modal-foot">
+        <button className="btn btn-primary" type="button" onClick={submit} disabled={busy}>
+          {busy ? "Đang lưu…" : attempt.reviewedAt ? "Cập nhật nhận xét" : "Lưu & trả bài"}
         </button>
       </div>
     </div>

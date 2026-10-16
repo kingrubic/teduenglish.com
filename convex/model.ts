@@ -10,7 +10,9 @@ export type McqQuestion = QuestionBase & { type: "mcq"; options: string[]; answe
 export type FillQuestion = QuestionBase & { type: "fill"; answer: string[] };
 /** Free writing marked by a teacher; `explain` is a tip shown with the prompt. */
 export type EssayQuestion = QuestionBase & { type: "essay"; minWords?: number };
-export type Question = McqQuestion | FillQuestion | EssayQuestion;
+/** Spoken answer (IELTS Speaking): the question is read aloud, then the student is recorded for `answerSec`. */
+export type SpeakQuestion = QuestionBase & { type: "speak"; answerSec: number; prepSec?: number };
+export type Question = McqQuestion | FillQuestion | EssayQuestion | SpeakQuestion;
 export type Section = {
   title: string;
   listen?: string;
@@ -20,12 +22,18 @@ export type Section = {
   questions: Question[];
 };
 export type IeltsKind = "listening" | "reading";
-export type IeltsSkill = IeltsKind | "writing";
+export type IeltsSkill = IeltsKind | "writing" | "speaking";
 export type AnswerValue = string | number;
 export type Answers = Record<string, AnswerValue>;
 
 export const MAX_PDF_BYTES = 50 * 1024 * 1024;
 export const MAX_AUDIO_BYTES = 40 * 1024 * 1024;
+/** One recorded Speaking answer (a few minutes of compressed speech is well under this). */
+export const MAX_RECORDING_BYTES = 8 * 1024 * 1024;
+/** Recordings are deleted this long after submission; marks and comments are kept. */
+export const RECORDING_KEEP_DAYS = 90;
+/** essayReviews key holding the teacher's single review of a Speaking test. */
+export const SPEAKING_REVIEW_KEY = "speaking";
 
 export function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
@@ -107,11 +115,12 @@ export function wordCount(text: unknown): number {
 
 export function isAnswered(q: Question, v: AnswerValue | undefined): boolean {
   if (q.type === "essay") return wordCount(v) > 0;
+  if (q.type === "speak") return typeof v === "string" && v !== "";
   return q.type === "fill" ? normAnswer(v) !== "" : typeof v === "number";
 }
 
 export function isCorrect(q: Question, v: AnswerValue | undefined): boolean {
-  if (q.type === "essay") return false;
+  if (q.type === "essay" || q.type === "speak") return false;
   if (q.type === "fill") {
     const a = normAnswer(v);
     return a !== "" && q.answer.some((x) => normAnswer(x) === a);
@@ -132,7 +141,7 @@ export function grade(sections: Section[], answers: Answers): GradeResult {
   let unanswered = 0;
   sections.forEach((sec, si) => {
     sec.questions.forEach((q, qi) => {
-      if (q.type === "essay") return; // marked by the teacher, not auto-graded
+      if (q.type === "essay" || q.type === "speak") return; // marked by the teacher, not auto-graded
       const v = answers[`${si}-${qi}`];
       total++;
       if (!isAnswered(q, v)) unanswered++;
@@ -149,7 +158,7 @@ const BANDS: Record<IeltsKind, [number, number][]> = {
 };
 
 export function bandFor(kind: IeltsSkill | undefined | null, correct: number, total: number): number | null {
-  const table = kind && kind !== "writing" ? BANDS[kind] : undefined;
+  const table = kind === "listening" || kind === "reading" ? BANDS[kind] : undefined;
   if (!table || !total) return null;
   const scaled = Math.round((correct / total) * 40);
   for (const [min, band] of table) if (scaled >= min) return band;
@@ -160,9 +169,15 @@ export function hasEssay(sections: { questions: { type: string }[] }[]): boolean
   return sections.some((s) => s.questions.some((q) => q.type === "essay"));
 }
 
+export function hasSpeak(sections: { questions: { type: string }[] }[]): boolean {
+  return sections.some((s) => s.questions.some((q) => q.type === "speak"));
+}
+
+export const SPEAKING_CRITERIA = ["Fluency & Coherence", "Lexical Resource", "Grammatical Range & Accuracy", "Pronunciation"];
+
 export const WRITING_CRITERIA = ["Task Achievement / Response", "Coherence & Cohesion", "Lexical Resource", "Grammatical Range & Accuracy"];
 
-/** IELTS rounding of the four criteria: .25 rounds up to .5, .75 rounds up to the next band. */
+/** IELTS rounding of the four criteria (Writing or Speaking): .25 rounds up to .5, .75 rounds up to the next band. */
 export function writingBand(criteria: number[]): number | null {
   if (criteria.length !== 4 || criteria.some((c) => !Number.isFinite(c) || c < 0 || c > 9)) return null;
   const avg = criteria.reduce((a, b) => a + b, 0) / 4;
@@ -251,10 +266,15 @@ export function validateSections(sections: Section[]): string[] {
       } else if (q.type === "essay") {
         if (q.minWords != null && (!Number.isInteger(q.minWords) || q.minWords < 0 || q.minWords > 2000))
           errors.push(`Câu ${num}: số từ tối thiểu phải từ 0 đến 2000.`);
+      } else if (q.type === "speak") {
+        if (!Number.isInteger(q.answerSec) || q.answerSec < 5 || q.answerSec > 300) errors.push(`Câu ${num}: thời gian trả lời phải từ 5 đến 300 giây.`);
+        if (q.prepSec != null && (!Number.isInteger(q.prepSec) || q.prepSec < 0 || q.prepSec > 120)) errors.push(`Câu ${num}: thời gian chuẩn bị phải từ 0 đến 120 giây.`);
       } else if (!q.answer.some((a) => normAnswer(a))) {
         errors.push(`Câu ${num}: cần ít nhất một đáp án được chấp nhận.`);
       }
     });
   });
+  if (hasSpeak(sections) && sections.some((s) => s.questions.some((q) => q.type !== "speak")))
+    errors.push("Bài Speaking chỉ gồm câu hỏi dạng “Nói (thu âm)”. Tách các câu khác sang bài riêng.");
   return errors;
 }

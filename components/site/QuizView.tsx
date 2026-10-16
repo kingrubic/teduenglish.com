@@ -6,10 +6,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Answers } from "@/convex/model";
-import { WRITING_CRITERIA, normAnswer, parseDialogue, wordCount } from "@/convex/model";
+import { SPEAKING_CRITERIA, WRITING_CRITERIA, normAnswer, parseDialogue, wordCount } from "@/convex/model";
 import { Rich, copyText, errMsg, sdel, sget, shuffle, signalReady, sset, stamp } from "@/lib/ui";
 import { GateLogin, GateNoAccess, Loading, Missing, Swoosh } from "./parts";
 import { useSite } from "./SiteShell";
+import SpeakingRunner from "./SpeakingRunner";
 
 type QuizData = NonNullable<FunctionReturnType<typeof api.site.quiz>>;
 type OkQuiz = Extract<QuizData, { status: "ok" }>;
@@ -64,7 +65,7 @@ export default function QuizView({ id }: { id: string }) {
         <div className="banner-meta">
           <span>{m.questionCount} câu</span>
           {m.minutes > 0 && <span>{m.timer === "off" ? `Khoảng ${m.minutes} phút` : `⏱ ${m.minutes} phút${m.timer === "auto" ? " · tự nộp khi hết giờ" : ""}`}</span>}
-          {m.hasEssay ? <span>Có bài viết · {teacher} nhận xét</span> : <span>Chấm tự động</span>}
+          {m.hasSpeak ? <span>🎤 Ghi âm · {teacher} chấm band</span> : m.hasEssay ? <span>Có bài viết · {teacher} nhận xét</span> : <span>Chấm tự động</span>}
           {(m.ielts === "listening" || m.ielts === "reading") && <span>Band tham khảo</span>}
         </div>
       </section>
@@ -93,8 +94,13 @@ export default function QuizView({ id }: { id: string }) {
           {!m.published && " Bài này đang là bản nháp, học sinh chưa thấy."}
         </p>
       )}
-      {data.status === "ok" && !data.preview && m.hasEssay && <MyWriting id={m.id} />}
-      {data.status === "ok" && <QuizRunner key={m.id} meta={m} sections={data.sections} preview={data.preview} />}
+      {data.status === "ok" && !data.preview && (m.hasEssay || m.hasSpeak) && <MyWriting id={m.id} speaking={m.hasSpeak} />}
+      {data.status === "ok" &&
+        (m.hasSpeak ? (
+          <SpeakingRunner key={m.id} meta={m} sections={data.sections} preview={data.preview} />
+        ) : (
+          <QuizRunner key={m.id} meta={m} sections={data.sections} preview={data.preview} />
+        ))}
     </>
   );
 }
@@ -662,6 +668,7 @@ function QuestionCard({
   review?: Review;
   onAnswer: (key: string, v: string | number) => void;
 }) {
+  if (q.type === "speak") return null; // Speaking tests use SpeakingRunner
   const done = !!review;
   const ok = !!review?.ok;
   const image = q.image?.url ? (
@@ -918,14 +925,14 @@ function ResultBlock({
 }
 
 /** Writing the student already handed in for this quiz, with the teacher's comments. */
-function MyWriting({ id }: { id: string }) {
+function MyWriting({ id, speaking }: { id: string; speaking?: boolean }) {
   const { token, teacher } = useSite();
   const rows = useQuery(api.site.writing, token ? { token, id } : "skip");
   if (!rows?.length) return null;
   return (
     <section className="panel my-writing" style={{ marginTop: 18 }}>
       <div>
-        <p className="eyebrow">Bài viết đã nộp</p>
+        <p className="eyebrow">{speaking ? "Bài nói đã nộp" : "Bài viết đã nộp"}</p>
         <h2>Nhận xét của {teacher}</h2>
       </div>
       {rows.map((a, i) => (
@@ -934,6 +941,46 @@ function MyWriting({ id }: { id: string }) {
             <span>Lần nộp {stamp(a.submittedAt)}</span>
             {a.status === "done" ? <span className="status on">Đã nhận xét</span> : <span className="status draft">Chờ nhận xét</span>}
           </summary>
+          {a.speaking && (
+            <div className="mw-essay">
+              {a.speaking.purged ? (
+                <p className="tiny muted">Ghi âm đã được xoá sau 90 ngày; điểm và nhận xét vẫn được giữ.</p>
+              ) : (
+                <div className="speak-replay">
+                  {a.speaking.recordings.map((r, i) => (
+                    <div key={r.key} className="speak-replay-row">
+                      <span className="tiny">
+                        <b>Câu {i + 1}.</b> {r.q.split("\n")[0]}
+                      </span>
+                      {r.url && <audio controls preload="none" src={r.url} />}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {a.status === "done" && a.speaking.review ? (
+                <div className="mw-review">
+                  {a.speaking.review.band != null && (
+                    <p className="mw-band">
+                      Band Speaking <b>{a.speaking.review.band.toFixed(1)}</b>
+                    </p>
+                  )}
+                  {a.speaking.review.criteria && (
+                    <div className="mw-criteria">
+                      {SPEAKING_CRITERIA.map((c, i) => (
+                        <span key={c}>
+                          {c} <b>{a.speaking!.review!.criteria![i].toFixed(1)}</b>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {a.speaking.review.comment && <p className="mw-comment">{a.speaking.review.comment}</p>}
+                  {a.reviewedBy && <p className="tiny muted">— {a.reviewedBy}</p>}
+                </div>
+              ) : a.status === "done" ? null : (
+                <p className="tiny muted">Bài đang chờ {teacher} chấm. Em quay lại trang này sau nhé.</p>
+              )}
+            </div>
+          )}
           {a.essays.map((e) => (
             <div key={e.key} className="mw-essay">
               <p className="tiny muted">

@@ -18,7 +18,7 @@ const uid = () => `u${++uidSeq}`;
 type EImage = { storageId: Id<"_storage">; name: string; url: string };
 type EQ = {
   uid: string;
-  type: "mcq" | "fill" | "essay";
+  type: "mcq" | "fill" | "essay" | "speak";
   tag: string;
   q: string;
   options: string[];
@@ -26,6 +26,8 @@ type EQ = {
   answerText: string; // fill: accepted answers, one per line
   explain: string; // essay: tip shown with the prompt
   minWords: number; // essay only
+  answerSec: number; // speak: recording time
+  prepSec: number; // speak: thinking time after the question (IELTS Part 2 cue card: 60)
   image: EImage | null;
 };
 type QuizSections = Doc<"quizzes">["sections"];
@@ -38,15 +40,44 @@ type Draft = {
   minutes: number;
   code: string;
   featured: boolean;
-  ielts: "" | "listening" | "reading" | "writing";
+  ielts: "" | "listening" | "reading" | "writing" | "speaking";
   timer: "off" | "count" | "auto";
   accent: "uk" | "us";
+  speakPrep: 15 | 30;
   term: "" | "hk1" | "hk2";
   published: boolean;
   sections: ES[];
 };
 
-const blankQ = (type: EQ["type"]): EQ => ({ uid: uid(), type, tag: "", q: "", options: ["", "", "", ""], answer: -1, answerText: "", explain: "", minWords: 0, image: null });
+const blankQ = (type: EQ["type"]): EQ => ({ uid: uid(), type, tag: "", q: "", options: ["", "", "", ""], answer: -1, answerText: "", explain: "", minWords: 0, answerSec: 30, prepSec: 0, image: null });
+
+const speakQ = (q: string, tag: string, answerSec: number, prepSec = 0): EQ => ({ ...blankQ("speak"), q, tag, answerSec, prepSec });
+
+/** Starter for an IELTS Speaking test: Part 1 interview, Part 2 cue card, Part 3 discussion. */
+function ieltsSpeakingTemplate(): ES[] {
+  const part = (title: string, questions: EQ[]): ES => ({ uid: uid(), title, kind: "plain", media: "", audio: null, questions });
+  return [
+    part("Part 1 · Introduction & interview", [
+      speakQ("Let's talk about your hometown. Where is your hometown?", "Part 1", 30),
+      speakQ("What do you like most about your hometown?", "Part 1", 30),
+      speakQ("Do you work or are you a student?", "Part 1", 30),
+      speakQ("What do you usually do at the weekend?", "Part 1", 30),
+    ]),
+    part("Part 2 · Long turn", [
+      speakQ(
+        "Describe a book you have read recently.\nYou should say:\n• what the book was\n• who wrote it\n• what it was about\nand explain why you liked or disliked it.",
+        "Part 2 · cue card",
+        120,
+        60,
+      ),
+    ]),
+    part("Part 3 · Discussion", [
+      speakQ("Do people in your country read as much as they used to?", "Part 3", 45),
+      speakQ("What are the advantages of reading books compared with watching films?", "Part 3", 45),
+      speakQ("How do you think reading habits will change in the future?", "Part 3", 45),
+    ]),
+  ];
+}
 
 /** Starter for an IELTS Academic Writing test: Task 1 (with a chart image) and Task 2. */
 function ieltsWritingTemplate(): ES[] {
@@ -104,6 +135,7 @@ function fromSections(sections: Section[], imageUrls: Record<string, string> = {
       };
       if (q.type === "mcq") return { ...base, options: [...q.options], answer: q.answer, answerText: q.options[q.answer] ?? "" };
       if (q.type === "fill") return { ...base, answerText: q.answer.join("\n") };
+      if (q.type === "speak") return { ...base, answerSec: q.answerSec, prepSec: q.prepSec ?? 0 };
       return { ...base, minWords: q.minWords ?? 0 };
     }),
   }));
@@ -124,6 +156,7 @@ function toSections(es: ES[]): QuizSections {
       };
       if (q.type === "mcq") return { type: "mcq" as const, ...base, options: q.options, answer: q.answer };
       if (q.type === "fill") return { type: "fill" as const, ...base, answer: q.answerText.split("\n").map((x) => x.trim()).filter(Boolean) };
+      if (q.type === "speak") return { type: "speak" as const, ...base, answerSec: q.answerSec, ...(q.prepSec > 0 ? { prepSec: q.prepSec } : {}) };
       return { type: "essay" as const, ...base, ...(q.minWords > 0 ? { minWords: q.minWords } : {}) };
     }),
   }));
@@ -141,6 +174,7 @@ function fromDoc(d: Doc<"quizzes"> & { fileUrls: Record<string, string> }): Draf
     ielts: d.ielts ?? "",
     timer: d.timer ?? (d.minutes > 0 ? "count" : "off"),
     accent: d.accent ?? "uk",
+    speakPrep: d.speakPrep === 30 ? 30 : 15,
     term: d.term ?? "",
     published: d.published,
     sections: fromSections(d.sections, d.fileUrls),
@@ -174,7 +208,7 @@ export default function QuizEditor({ id }: { id: string }) {
     if (draft) return;
     if (isNew && folders) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDraft({ slug: "", folder: folders[0]?.slug ?? "", title: "", subtitle: "", minutes: 10, code: "", featured: false, ielts: "", published: true, timer: "count", accent: "uk", term: "", sections: [blankS()] });
+      setDraft({ slug: "", folder: folders[0]?.slug ?? "", title: "", subtitle: "", minutes: 10, code: "", featured: false, ielts: "", published: true, timer: "count", accent: "uk", speakPrep: 15, term: "", sections: [blankS()] });
     } else if (doc) setDraft(fromDoc(doc));
   }, [doc, folders, isNew, draft]);
 
@@ -222,6 +256,7 @@ export default function QuizEditor({ id }: { id: string }) {
         ielts: d.ielts || undefined,
         timer: d.timer,
         accent: d.accent,
+        speakPrep: d.speakPrep,
         term: d.term || undefined,
         published: d.published,
         sections,
@@ -261,6 +296,23 @@ export default function QuizEditor({ id }: { id: string }) {
               }}
             >
               Dùng mẫu IELTS Writing
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              type="button"
+              onClick={() => {
+                const empty = d.sections.every((x) => x.questions.every((q) => !q.q.trim()));
+                if (!empty && !confirm("Thay toàn bộ câu hỏi hiện tại bằng mẫu IELTS Speaking Part 1, 2, 3?")) return;
+                update({
+                  sections: ieltsSpeakingTemplate(),
+                  ielts: "speaking",
+                  minutes: 14,
+                  timer: "off",
+                  ...(d.title.trim() ? {} : { title: "IELTS Speaking Practice", subtitle: "Part 1, 2 & 3 · ghi âm" }),
+                });
+              }}
+            >
+              🎤 Dùng mẫu IELTS Speaking
             </button>
             <button className="btn btn-ghost btn-sm" type="button" onClick={() => setJsonOpen(true)}>
               Nhập / xuất JSON
@@ -328,6 +380,7 @@ export default function QuizEditor({ id }: { id: string }) {
               <option value="listening">IELTS Listening</option>
               <option value="reading">IELTS Reading</option>
               <option value="writing">IELTS Writing (band do giáo viên chấm)</option>
+              <option value="speaking">IELTS Speaking (band do giáo viên chấm)</option>
             </select>
           </div>
           <div className="field">
@@ -348,8 +401,19 @@ export default function QuizEditor({ id }: { id: string }) {
               <option value="off">Không đếm giờ</option>
             </select>
           </div>
+          {d.sections.some((s) => s.questions.some((q) => q.type === "speak")) && (
+            <div className="field">
+              <label htmlFor="qz-speakprep">
+                Speaking: chuẩn bị <span className="hint">(kiểm tra micro xong mới đếm)</span>
+              </label>
+              <select className="select" id="qz-speakprep" value={d.speakPrep} onChange={(e) => update({ speakPrep: Number(e.target.value) === 30 ? 30 : 15 })}>
+                <option value={15}>15 giây trước khi bắt đầu</option>
+                <option value={30}>30 giây trước khi bắt đầu</option>
+              </select>
+            </div>
+          )}
           <div className="field">
-            <label htmlFor="qz-accent">Giọng đọc phần nghe</label>
+            <label htmlFor="qz-accent">Giọng đọc phần nghe / câu hỏi Speaking</label>
             <select className="select" id="qz-accent" value={d.accent} onChange={(e) => update({ accent: e.target.value as Draft["accent"] })}>
               <option value="uk">🇬🇧 Anh (UK)</option>
               <option value="us">🇺🇸 Mỹ (US)</option>
@@ -458,6 +522,7 @@ export default function QuizEditor({ id }: { id: string }) {
                     <option value="mcq">Trắc nghiệm</option>
                     <option value="fill">Điền từ / viết lại câu</option>
                     <option value="essay">Bài viết (giáo viên chấm)</option>
+                    <option value="speak">Nói (thu âm, giáo viên chấm)</option>
                   </select>
                   <button className="link-btn" type="button" disabled={qi === 0} onClick={() => setSection(si, { questions: move(s.questions, qi, -1) })} aria-label="Lên">
                     ↑
@@ -499,7 +564,39 @@ export default function QuizEditor({ id }: { id: string }) {
                 </div>
               </div>
               <ImageField image={q.image} onChange={(image) => setQuestion(si, qi, { image })} />
-              {q.type === "essay" ? (
+              {q.type === "speak" ? (
+                <div className="row-2">
+                  <div className="field">
+                    <label htmlFor={`as-${q.uid}`}>
+                      Thời gian trả lời <span className="hint">(giây; Part 1 ≈ 30, Part 3 ≈ 45, Part 2 = 120)</span>
+                    </label>
+                    <input
+                      className="input compact"
+                      id={`as-${q.uid}`}
+                      type="number"
+                      min={5}
+                      max={300}
+                      value={q.answerSec || ""}
+                      onChange={(e) => setQuestion(si, qi, { answerSec: Math.round(Number(e.target.value) || 0) })}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={`ps-${q.uid}`}>
+                      Thời gian suy nghĩ <span className="hint">(giây, sau khi đọc câu hỏi; thẻ đề Part 2 = 60)</span>
+                    </label>
+                    <input
+                      className="input compact"
+                      id={`ps-${q.uid}`}
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={q.prepSec || ""}
+                      placeholder="0 = trả lời ngay"
+                      onChange={(e) => setQuestion(si, qi, { prepSec: Math.max(0, Math.round(Number(e.target.value) || 0)) })}
+                    />
+                  </div>
+                </div>
+              ) : q.type === "essay" ? (
                 <div className="row-2" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,3fr)" }}>
                   <div className="field">
                     <label htmlFor={`mw-${q.uid}`}>Số từ tối thiểu</label>
@@ -661,7 +758,9 @@ function JsonDialog({ draft, onClose, onApply }: { draft: Draft; onClose: () => 
           : {}),
         ...(s.passage ? { passage: String(s.passage) } : {}),
         questions: ((s.questions as Record<string, unknown>[]) ?? []).map((q) =>
-          q.type === "essay"
+          q.type === "speak"
+            ? { type: "speak" as const, tag: q.tag ? String(q.tag) : undefined, q: String(q.q ?? ""), answerSec: Number(q.answerSec) || 30, prepSec: q.prepSec ? Number(q.prepSec) : undefined }
+            : q.type === "essay"
             ? { type: "essay" as const, tag: q.tag ? String(q.tag) : undefined, q: String(q.q ?? ""), minWords: q.minWords ? Number(q.minWords) : undefined, explain: q.explain ? String(q.explain) : undefined }
             : q.type === "fill"
             ? { type: "fill" as const, tag: q.tag ? String(q.tag) : undefined, q: String(q.q ?? ""), answer: (Array.isArray(q.answer) ? q.answer : [q.answer]).map(String), explain: q.explain ? String(q.explain) : undefined }
@@ -674,7 +773,7 @@ function JsonDialog({ draft, onClose, onApply }: { draft: Draft; onClose: () => 
       if (typeof obj.minutes === "number") patch.minutes = obj.minutes;
       if (typeof obj.code === "string") patch.code = obj.code;
       if (typeof obj.featured === "boolean") patch.featured = obj.featured;
-      if (obj.ielts === "listening" || obj.ielts === "reading" || obj.ielts === "writing") patch.ielts = obj.ielts;
+      if (obj.ielts === "listening" || obj.ielts === "reading" || obj.ielts === "writing" || obj.ielts === "speaking") patch.ielts = obj.ielts;
       if (typeof obj.id === "string" && !draft.slug) patch.slug = obj.id;
       onApply(patch);
     } catch (e) {

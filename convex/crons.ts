@@ -1,7 +1,8 @@
 import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
-import { quizFileIds } from "./lib";
+import { quizFileIds, recordingIds } from "./lib";
+import { RECORDING_KEEP_DAYS, hasSpeak } from "./model";
 
 /** Removes expired sessions and login attempts older than a day. */
 export const cleanup = internalMutation({
@@ -14,8 +15,28 @@ export const cleanup = internalMutation({
     for (const s of oldAdmin) await ctx.db.delete(s._id);
     const oldParent = await ctx.db.query("parentSessions").withIndex("by_expiresAt", (q) => q.lt("expiresAt", now)).take(500);
     for (const s of oldParent) await ctx.db.delete(s._id);
-    // Uploads that never got attached to a resource (form closed before saving).
-    const used = new Set<string>((await ctx.db.query("resources").collect()).flatMap((r) => (r.file ? [r.file.storageId] : [])));
+    // Speaking recordings older than the keep period: delete the audio, keep marks and comments.
+    const used = new Set<string>();
+    const keepFrom = now - RECORDING_KEEP_DAYS * 24 * 60 * 60 * 1000;
+    for (const q of await ctx.db.query("quizzes").collect()) {
+      if (!hasSpeak(q.sections)) continue;
+      for (const a of await ctx.db.query("attempts").withIndex("by_quiz", (x) => x.eq("quizId", q._id)).collect()) {
+        const recs = recordingIds(q, a);
+        if (!recs.length) continue;
+        if (a.submittedAt >= keepFrom) {
+          recs.forEach(([, id]) => used.add(id));
+          continue;
+        }
+        const answers = { ...a.answers };
+        for (const [key, id] of recs) {
+          answers[key] = "";
+          await ctx.storage.delete(id).catch(() => {});
+        }
+        await ctx.db.patch(a._id, { answers, recordingsPurged: true });
+      }
+    }
+    // Uploads that never got attached to a resource, quiz or attempt (form closed before saving, abandoned test).
+    for (const r of await ctx.db.query("resources").collect()) if (r.file) used.add(r.file.storageId);
     for (const q of await ctx.db.query("quizzes").collect()) quizFileIds(q.sections).forEach((id) => used.add(id));
     for (const a of await ctx.db.query("clarifyAnswers").collect()) a.files.forEach((f) => used.add(f.storageId));
     const files = await ctx.db.system.query("_storage").collect();

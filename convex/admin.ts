@@ -15,6 +15,7 @@ import {
   quizAudioIds,
   quizFileIds,
   quizImageIds,
+  recordingIds,
   releaseFiles,
   randomToken,
   requireAdmin,
@@ -23,7 +24,7 @@ import {
   verifyPassword,
 } from "./lib";
 import { accentValidator, essayReviewValidator, ieltsValidator, resourceKindValidator, sectionValidator, termValidator, timerValidator } from "./schema";
-import { MAX_AUDIO_BYTES, MAX_PDF_BYTES, formatBytes, hasEssay, isCorrect, normCode, parentCodeFor, questionCount, slugify, validateSections, wordCount, writingBand } from "./model";
+import { MAX_AUDIO_BYTES, MAX_PDF_BYTES, SPEAKING_REVIEW_KEY, formatBytes, hasEssay, hasSpeak, isCorrect, normCode, parentCodeFor, questionCount, slugify, validateSections, wordCount, writingBand } from "./model";
 
 const tokenArg = { token: v.string() };
 
@@ -628,6 +629,7 @@ const quizFields = {
   published: v.boolean(),
   timer: timerValidator,
   accent: accentValidator,
+  speakPrep: v.optional(v.number()),
   term: termValidator,
   sections: v.array(sectionValidator),
 };
@@ -653,6 +655,8 @@ export const saveQuiz = mutation({
         };
         if (q.type === "mcq") return { type: "mcq" as const, ...base, options: q.options.map((o) => o.trim()), answer: q.answer };
         if (q.type === "fill") return { type: "fill" as const, ...base, answer: q.answer.map((a) => a.trim()).filter(Boolean) };
+        if (q.type === "speak")
+          return { type: "speak" as const, ...base, answerSec: Math.round(q.answerSec), ...(q.prepSec ? { prepSec: Math.round(q.prepSec) } : {}) };
         return { type: "essay" as const, ...base, ...(q.minWords ? { minWords: Math.round(q.minWords) } : {}) };
       }),
     }));
@@ -685,6 +689,7 @@ export const saveQuiz = mutation({
       published: args.published,
       ...(args.timer ? { timer: args.timer } : {}),
       ...(args.accent ? { accent: args.accent } : {}),
+      ...(hasSpeak(sections) ? { speakPrep: args.speakPrep === 30 ? 30 : 15 } : {}),
       ...(args.term ? { term: args.term } : {}),
       sections,
       updatedAt: Date.now(),
@@ -772,7 +777,7 @@ export const attemptDetail = query({
     const quiz = await ctx.db.get(a.quizId);
     const row = await attemptRow(ctx, a);
     const meta = { reviewedAt: a.reviewedAt ?? null, reviewedBy: a.reviewedBy ?? null };
-    if (!quiz) return { ...row, ...meta, questions: [], essays: [] };
+    if (!quiz) return { ...row, ...meta, questions: [], essays: [], speaking: null };
     const questions: { num: number; section: string; q: string; given: string; right: string; ok: boolean }[] = [];
     const essays: {
       num: number;
@@ -791,6 +796,7 @@ export const attemptDetail = query({
         num++;
         const key = `${si}-${qi}`;
         const val = a.answers[key];
+        if (q.type === "speak") continue; // listed under `speaking` below
         if (q.type === "essay") {
           const r = a.essayReviews?.[key];
           essays.push({
@@ -810,7 +816,23 @@ export const attemptDetail = query({
         const right = q.type === "mcq" ? q.options[q.answer] ?? "" : q.answer.join(" / ");
         questions.push({ num, section: sec.title, q: q.q, given, right, ok: isCorrect(q, val) });
       }
-    return { ...row, ...meta, questions, essays };
+    // Speaking: every question with its recording, and one review for the whole test.
+    let speaking = null;
+    if (hasSpeak(quiz.sections)) {
+      const recs = new Map(recordingIds(quiz, a));
+      const items = [];
+      let n = 0;
+      for (const [si, sec] of quiz.sections.entries())
+        for (const [qi, q] of sec.questions.entries()) {
+          n++;
+          if (q.type !== "speak") continue;
+          const id = recs.get(`${si}-${qi}`);
+          items.push({ num: n, key: `${si}-${qi}`, section: sec.title, q: q.q, answerSec: q.answerSec, url: id ? await ctx.storage.getUrl(id) : null });
+        }
+      const r = a.essayReviews?.[SPEAKING_REVIEW_KEY];
+      speaking = { purged: !!a.recordingsPurged, items, review: r ? { comment: r.comment, band: r.band ?? null, criteria: r.criteria ?? null } : null };
+    }
+    return { ...row, ...meta, questions, essays, speaking };
   },
 });
 
