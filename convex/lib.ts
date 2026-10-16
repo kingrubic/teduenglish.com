@@ -1,7 +1,21 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { firstName, hasEssay, hasSpeak, lastTwoWords, noMarks, normCode, questionCount } from "./model";
+import {
+  MAX_ESSAY_CHARS,
+  MAX_RECORDING_BYTES,
+  bandFor,
+  firstName,
+  grade,
+  hasEssay,
+  hasSpeak,
+  lastTwoWords,
+  noMarks,
+  normCode,
+  questionCount,
+  wordCount,
+  type Answers,
+} from "./model";
 
 export const STUDENT_SESSION_MS = 180 * 24 * 60 * 60 * 1000;
 export const ADMIN_SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -143,6 +157,66 @@ export async function studentByCode(ctx: Ctx, code: string) {
     .first();
 }
 
+/** Whether leaving this test (another tab or app) warns and then locks the account. */
+export function focusGuardOn(quiz: Doc<"quizzes">): boolean {
+  return quiz.focusGuard ?? (quiz.ielts === "reading" || quiz.ielts === "writing" || hasEssay(quiz.sections));
+}
+
+/** Keeps only answers that map to real questions (trimmed); Speaking answers must be real, small recordings. */
+export async function cleanAnswers(ctx: Ctx, quiz: Doc<"quizzes">, raw: Record<string, string | number>, preview: boolean) {
+  const answers: Answers = {};
+  quiz.sections.forEach((sec, si) =>
+    sec.questions.forEach((q, qi) => {
+      const key = `${si}-${qi}`;
+      const val = raw[key];
+      if (q.type === "mcq" && typeof val === "number") answers[key] = val;
+      if (q.type === "fill" && typeof val === "string") answers[key] = val.slice(0, 300);
+      if (q.type === "essay" && typeof val === "string" && val.trim()) answers[key] = val.slice(0, MAX_ESSAY_CHARS);
+      if (q.type === "speak" && !preview && typeof val === "string" && val) answers[key] = val; // checked below
+    }),
+  );
+  let spoke = false;
+  for (const [key, val] of Object.entries(answers)) {
+    const [si, qi] = key.split("-").map(Number);
+    if (quiz.sections[si]?.questions[qi]?.type !== "speak") continue;
+    const id = ctx.db.system.normalizeId("_storage", String(val));
+    const meta = id ? await ctx.db.system.get(id) : null;
+    if (id && meta && (meta.contentType ?? "").startsWith("audio/") && meta.size <= MAX_RECORDING_BYTES) {
+      answers[key] = id;
+      spoke = true;
+    } else delete answers[key];
+  }
+  const needsReview = spoke || quiz.sections.some((sec, si) => sec.questions.some((q, qi) => q.type === "essay" && wordCount(answers[`${si}-${qi}`]) > 0));
+  return { answers, needsReview };
+}
+
+/** Grades and stores one attempt. */
+export async function saveAttempt(
+  ctx: MutationCtx,
+  quiz: Doc<"quizzes">,
+  studentId: Id<"students">,
+  raw: Record<string, string | number>,
+  opts: { durationSec?: number; leftQuiz?: boolean } = {},
+) {
+  const { answers, needsReview } = await cleanAnswers(ctx, quiz, raw, false);
+  const result = grade(quiz.sections, answers);
+  const band = bandFor(quiz.ielts, result.correct, result.total);
+  const now = Date.now();
+  await ctx.db.insert("attempts", {
+    studentId,
+    quizId: quiz._id,
+    ...result,
+    band: band ?? undefined,
+    answers,
+    submittedAt: now,
+    ...(opts.durationSec != null ? { durationSec: Math.max(0, Math.min(86_400, Math.round(opts.durationSec))) } : {}),
+    ...(needsReview ? { reviewStatus: "pending" as const } : {}),
+    ...(opts.leftQuiz ? { leftQuiz: true } : {}),
+  });
+  await ctx.db.patch(studentId, { lastSeenAt: now });
+  return { answers, needsReview, result, band, now };
+}
+
 export function quizMeta(quiz: Doc<"quizzes">) {
   return {
     id: quiz.slug,
@@ -156,6 +230,7 @@ export function quizMeta(quiz: Doc<"quizzes">) {
     questionCount: questionCount(quiz.sections),
     hasEssay: hasEssay(quiz.sections),
     hasSpeak: hasSpeak(quiz.sections),
+    guard: focusGuardOn(quiz),
     speakPrep: quiz.speakPrep ?? 15,
     timer: quiz.timer ?? (quiz.minutes > 0 ? "count" : "off"),
     accent: quiz.accent ?? "uk",

@@ -887,6 +887,10 @@ const FAQ: [string, React.ReactNode][] = [
     "Trang Thống kê: thẻ “Chuyên cần” (tỷ lệ bài đã làm / bài được giao, lọc theo lớp và thư mục) và thẻ “Xếp hạng IELTS” (lọc theo lớp, kỹ năng, từng bài; bật “Ẩn tên” khi chiếu cho cả lớp). Cả hai đều tải Excel được. Học sinh tự xem thứ hạng IELTS của mình trong lớp ở trang học tập (tên các bạn khác được ẩn); phụ huynh không thấy bảng này. Muốn bài Writing vào bảng xếp hạng: đặt bài trong thư mục IELTS hoặc chọn “IELTS Writing” ở ô Kỹ năng IELTS, và chấm band cho từng Task.",
   ],
   [
+    "Chống chuyển tab khi làm bài hoạt động thế nào?",
+    "Bài IELTS Reading, IELTS Writing và bài có phần viết tự bật “🔒 Chống chuyển tab” (thầy cô bật/tắt từng bài trong trình soạn). Khi đang làm, nếu em chuyển tab, mở ứng dụng hay trình duyệt khác: lần 1 hiện cảnh báo, tên tab nhấp nháy, kêu bíp và đếm ngược 5 giây để quay lại; quá 5 giây, hoặc rời bài lần 2, phần bài em đã làm được tự nộp (có nhãn “🚪 Tự nộp” ở trang Kết quả) và tài khoản bị khoá. Mở lại: trang Học sinh → “🔓 Mở khoá”. Lưu ý: hệ thống không biết em dùng thêm máy thứ hai, và cuộc gọi đến hay tắt màn hình điện thoại cũng bị tính là rời bài.",
+  ],
+  [
     "Vì sao có bài bị mờ đi, học sinh không bấm vào được?",
     "Bài trắc nghiệm, điền từ mà em làm đúng từ 80% trở lên sẽ tự khoá (mờ đi) để tránh cho bạn mượn tài khoản làm hộ hoặc chép đáp án. Đổi mức % hoặc tắt (đặt 0) ở Cài đặt & tài khoản. Muốn cho một em làm lại: vào Kết quả, bấm “🔓 Cho làm lại” ở dòng bài đó, điểm cũ vẫn giữ.",
   ],

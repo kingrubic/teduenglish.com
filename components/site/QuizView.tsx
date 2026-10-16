@@ -10,6 +10,7 @@ import { RECORDING_KEEP_DAYS, SPEAKING_CRITERIA, WRITING_CRITERIA, normAnswer, p
 import { Rich, copyText, errMsg, sdel, sget, shuffle, signalReady, sset, stamp } from "@/lib/ui";
 import { GateLogin, GateNoAccess, Loading, Missing, Swoosh } from "./parts";
 import { useSite } from "./SiteShell";
+import FocusGuard, { withGuardPaused } from "./FocusGuard";
 import SpeakingRunner from "./SpeakingRunner";
 
 type QuizData = NonNullable<FunctionReturnType<typeof api.site.quiz>>;
@@ -39,6 +40,8 @@ export default function QuizView({ id }: { id: string }) {
     if (live?.status === "ok") setSitting(live);
   }, [live]);
   const data = live?.status === "mastered" && sitting ? sitting : live;
+  // Locked out for leaving a guarded test: the session is gone, so show this instead of the login gate.
+  const [lockedOut, setLockedOut] = useState(false);
 
   useEffect(() => {
     if (data !== undefined) signalReady();
@@ -48,6 +51,19 @@ export default function QuizView({ id }: { id: string }) {
     };
   }, [data]);
 
+  if (lockedOut)
+    return (
+      <section className="gate guard-locked" role="alert">
+        <div>
+          <p className="eyebrow">Tài khoản đã bị khoá</p>
+          <h2>🔒 Em đã rời khỏi bài khi đang làm</h2>
+          <p className="small muted">Phần bài em làm đến lúc đó đã được gửi cho {teacher}. Em liên hệ {teacher} để được mở lại tài khoản.</p>
+        </div>
+        <Link className="btn btn-primary" href="/">
+          Về trang chủ
+        </Link>
+      </section>
+    );
   if (data === undefined) return <Loading />;
   if (data === null) return <Missing />;
   const m = data.meta;
@@ -99,7 +115,7 @@ export default function QuizView({ id }: { id: string }) {
         (m.hasSpeak ? (
           <SpeakingRunner key={m.id} meta={m} sections={data.sections} preview={data.preview} />
         ) : (
-          <QuizRunner key={m.id} meta={m} sections={data.sections} preview={data.preview} />
+          <QuizRunner key={m.id} meta={m} sections={data.sections} preview={data.preview} guardUsed={data.guardUsed} onLockedOut={() => setLockedOut(true)} />
         ))}
     </>
   );
@@ -194,8 +210,20 @@ function answeredCount(sections: PubSection[], answers: Answers) {
   return n;
 }
 
-function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sections: PubSection[]; preview: boolean }) {
-  const { token, adminToken, teacher, home, toast } = useSite();
+function QuizRunner({
+  meta,
+  sections: liveSections,
+  preview,
+  guardUsed,
+  onLockedOut,
+}: {
+  meta: Meta;
+  sections: PubSection[];
+  preview: boolean;
+  guardUsed: number;
+  onLockedOut: () => void;
+}) {
+  const { token, adminToken, teacher, home, toast, signOut } = useSite();
   const submitMut = useMutation(api.site.submit);
   // Freeze the questions for this sitting, even if a teacher edits the quiz meanwhile.
   const [sections] = useState(liveSections);
@@ -315,7 +343,7 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
         return n < q.minWords ? [`${n}/${q.minWords} từ`] : [];
       }),
     );
-    if (!auto && short.length && !window.confirm(`Bài viết chưa đủ số từ tối thiểu (${short.join(", ")}). Em vẫn muốn nộp?`)) return;
+    if (!auto && short.length && !withGuardPaused(() => window.confirm(`Bài viết chưa đủ số từ tối thiểu (${short.join(", ")}). Em vẫn muốn nộp?`))) return;
     ttsStop();
     setTts((t) => ({ ...t, playing: false, paused: false }));
     setBusy(true);
@@ -391,6 +419,19 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
   let num = 0;
   return (
     <div className="quiz-wrap" ref={rootRef}>
+      {meta.guard && !preview && token && !att.submitted && (
+        <FocusGuard
+          id={meta.id}
+          token={token}
+          used={guardUsed}
+          snapshot={() => ({ answers: att.answers, durationSec: (Date.now() - att.startedAt) / 1000 })}
+          onLocked={() => {
+            sdel("localStorage", draftKey);
+            onLockedOut();
+          }}
+          onSignOut={signOut}
+        />
+      )}
       {att.submitted && att.outcome && (
         <ResultBlock
           outcome={att.outcome}

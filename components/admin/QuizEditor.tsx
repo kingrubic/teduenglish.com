@@ -45,6 +45,8 @@ type Draft = {
   timer: "off" | "count" | "auto";
   accent: "uk" | "us";
   speakPrep: 15 | 30;
+  /** null = automatic (on for IELTS Reading/Writing and tests with essays). */
+  focusGuard: boolean | null;
   term: "" | "hk1" | "hk2";
   published: boolean;
   sections: ES[];
@@ -176,6 +178,7 @@ function fromDoc(d: Doc<"quizzes"> & { fileUrls: Record<string, string> }): Draf
     timer: d.timer ?? (d.minutes > 0 ? "count" : "off"),
     accent: d.accent ?? "uk",
     speakPrep: d.speakPrep === 30 ? 30 : 15,
+    focusGuard: d.focusGuard ?? null,
     term: d.term ?? "",
     published: d.published,
     sections: fromSections(d.sections, d.fileUrls),
@@ -209,7 +212,7 @@ export default function QuizEditor({ id }: { id: string }) {
     if (draft) return;
     if (isNew && folders) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDraft({ slug: "", folder: folders[0]?.slug ?? "", title: "", subtitle: "", minutes: 10, code: "", featured: false, ielts: "", published: true, timer: "count", accent: "uk", speakPrep: 15, term: "", sections: [blankS()] });
+      setDraft({ slug: "", folder: folders[0]?.slug ?? "", title: "", subtitle: "", minutes: 10, code: "", featured: false, ielts: "", published: true, timer: "count", accent: "uk", speakPrep: 15, focusGuard: null, term: "", sections: [blankS()] });
     } else if (doc) setDraft(fromDoc(doc));
   }, [doc, folders, isNew, draft]);
 
@@ -233,6 +236,8 @@ export default function QuizEditor({ id }: { id: string }) {
   const setQuestion = (si: number, qi: number, patch: Partial<EQ>) =>
     setSection(si, { questions: d.sections[si].questions.map((q, i) => (i === qi ? { ...q, ...patch } : q)) });
   const total = d.sections.reduce((n, s) => n + s.questions.length, 0);
+  const hasSpeakQ = d.sections.some((s) => s.questions.some((q) => q.type === "speak"));
+  const guardOn = d.focusGuard ?? (d.ielts === "reading" || d.ielts === "writing" || d.sections.some((s) => s.questions.some((q) => q.type === "essay")));
 
   async function onSave() {
     const sections = toSections(d.sections);
@@ -258,6 +263,7 @@ export default function QuizEditor({ id }: { id: string }) {
         timer: d.timer,
         accent: d.accent,
         speakPrep: d.speakPrep,
+        focusGuard: d.focusGuard ?? undefined,
         term: d.term || undefined,
         published: d.published,
         sections,
@@ -435,6 +441,12 @@ export default function QuizEditor({ id }: { id: string }) {
               <input type="checkbox" checked={d.published} onChange={(e) => update({ published: e.target.checked })} />
               Hiện cho học sinh
             </label>
+            {!hasSpeakQ && (
+              <label className="switch" title="Lần 1 rời bài: cảnh báo, 5 giây để quay lại. Lần 2: nộp bài và khoá tài khoản.">
+                <input type="checkbox" checked={guardOn} onChange={(e) => update({ focusGuard: e.target.checked })} />
+                🔒 Chống chuyển tab (lần 1 cảnh báo, lần 2 khoá tài khoản)
+              </label>
+            )}
             <label className="switch">
               <input type="checkbox" checked={d.featured} onChange={(e) => update({ featured: e.target.checked })} />
               Nổi bật đầu trang học sinh

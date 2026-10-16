@@ -21,6 +21,8 @@ export default function Students() {
   const folders = useQuery(api.admin.folders, { token });
   const regen = useMutation(api.admin.regenerateCode);
   const fillParents = useMutation(api.stats.fillParentCodes);
+  const unlock = useMutation(api.guard.unlock);
+  const lockedOut = (students ?? []).filter((s) => !s.active && s.lockedReason).length;
   // Parent code = student code with "ph" before the last 4 digits; flags any that are out of step.
   const missingParent = (students ?? []).filter((s) => s.parentCode !== parentCodeFor(s.code)).length;
   const del = useMutation(api.admin.deleteStudent);
@@ -101,6 +103,16 @@ export default function Students() {
           </button>
         </div>
       </div>
+
+      {lockedOut > 0 && (
+        <p className="alert alert-warn">
+          🚪 {lockedOut} học sinh đang bị khoá vì rời khỏi bài có giám sát.{" "}
+          <button className="link-btn" type="button" onClick={() => setStatus("off")}>
+            Xem danh sách
+          </button>{" "}
+          rồi bấm “🔓 Mở khoá” khi muốn cho em làm tiếp.
+        </p>
+      )}
 
       <div className="toolbar">
         <div className="filters">
@@ -221,7 +233,20 @@ export default function Students() {
                     {s.attemptCount ? <Link href={`/admin/ket-qua?student=${s._id}`}>{s.attemptCount}</Link> : 0}
                     {s.lastAttemptAt && <span className="sub">{stamp(s.lastAttemptAt)}</span>}
                   </td>
-                  <td>{s.active ? <span className="status on">Đang mở</span> : <span className="status off">Đã khóa</span>}</td>
+                  <td>
+                    {s.active ? <span className="status on">Đang mở</span> : <span className="status off">Đã khóa</span>}
+                    {!s.active && s.lockedReason && (
+                      <>
+                        <span className="sub">
+                          🚪 {s.lockedReason}
+                          {s.lockedAt ? ` · ${stamp(s.lockedAt)}` : ""}
+                        </span>
+                        <button className="link-btn" type="button" style={{ display: "block" }} onClick={() => run(() => unlock({ token, id: s._id }), `Đã mở khoá cho ${s.name}.`)}>
+                          🔓 Mở khoá
+                        </button>
+                      </>
+                    )}
+                  </td>
                   <td>
                     <div className="row-actions">
                       <button className="link-btn" type="button" onClick={() => setEditing(s)}>

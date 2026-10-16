@@ -20,9 +20,12 @@ import {
   isMastered,
   studentQuizAttempts,
   recordingIds,
+  cleanAnswers,
+  saveAttempt,
 } from "./lib";
+import { awayCount } from "./guard";
 import { classRanking, progressFor } from "./stats";
-import { MAX_ESSAY_CHARS, MAX_RECORDING_BYTES, SPEAKING_REVIEW_KEY, bandFor, grade, hasEssay, hasSpeak, isAnswered, isCorrect, normCode, wordCount, type Answers } from "./model";
+import { SPEAKING_REVIEW_KEY, bandFor, grade, hasEssay, hasSpeak, isAnswered, isCorrect, normCode, wordCount, type Answers } from "./model";
 
 const token = v.optional(v.string());
 
@@ -136,7 +139,7 @@ export const quiz = query({
     const meta = { ...quizMeta(quiz), folderName: f?.name ?? "", published: quiz.published, lockAtPercent };
     const student = await studentFromToken(ctx, args.token);
     if (!student || !canOpen(student, quiz.folder) || !quiz.published) {
-      if (await previewAdmin(ctx, args.adminToken)) return { meta, status: "ok" as const, preview: true, sections: await publicSections(ctx, quiz) };
+      if (await previewAdmin(ctx, args.adminToken)) return { meta, status: "ok" as const, preview: true, guardUsed: 0, sections: await publicSections(ctx, quiz) };
     }
     if (!quiz.published) return null;
     if (!student) return { meta, status: "login" as const };
@@ -153,7 +156,9 @@ export const quiz = query({
         .first();
       if (!unlocked) return { meta, status: "locked" as const };
     }
-    return { meta, status: "ok" as const, preview: false, sections: await publicSections(ctx, quiz) };
+    // Warnings already used on this test since the last submission (a reload doesn't reset them).
+    const guardUsed = meta.guard ? await awayCount(ctx, student._id, quiz) : 0;
+    return { meta, status: "ok" as const, preview: false, guardUsed, sections: await publicSections(ctx, quiz) };
   },
 });
 
@@ -236,6 +241,8 @@ export const login = mutation({
 
     const settings = await getSettings(ctx);
     const student = await studentByCode(ctx, code);
+    if (student && !student.active && student.lockedReason)
+      return { ok: false, error: `Tài khoản của em đang bị khoá vì rời khỏi bài khi đang làm bài. Em nhắn ${settings.teacher} để được mở lại.` };
     if (!student || !student.active) {
       await ctx.db.insert("loginAttempts", { kind: "student", key: code.slice(0, 40), ok: false, at: now });
       return { ok: false, error: `Không tìm thấy mã này. Em kiểm tra lại hoặc nhắn ${settings.teacher} để được cấp lại.` };
@@ -309,48 +316,17 @@ export const submit = mutation({
       if (!unlocked) fail("Bài này cần mã bài trước khi nộp.");
     }
 
-    // Keep only answers that map to a real question, trimmed to a sane size.
-    const answers: Answers = {};
-    quiz.sections.forEach((sec, si) =>
-      sec.questions.forEach((q, qi) => {
-        const key = `${si}-${qi}`;
-        const val = args.answers[key];
-        if (q.type === "mcq" && typeof val === "number") answers[key] = val;
-        if (q.type === "fill" && typeof val === "string") answers[key] = val.slice(0, 300);
-        if (q.type === "essay" && typeof val === "string" && val.trim()) answers[key] = val.slice(0, MAX_ESSAY_CHARS);
-        if (q.type === "speak" && !preview && typeof val === "string" && val) answers[key] = val; // checked below
-      }),
-    );
-    // Speaking: each answer is the id of an uploaded recording; drop anything that isn't a real, small audio file.
-    let spoke = false;
-    for (const [key, val] of Object.entries(answers)) {
-      const [si, qi] = key.split("-").map(Number);
-      if (quiz.sections[si]?.questions[qi]?.type !== "speak") continue;
-      const id = ctx.db.system.normalizeId("_storage", String(val));
-      const meta = id ? await ctx.db.system.get(id) : null;
-      if (id && meta && (meta.contentType ?? "").startsWith("audio/") && meta.size <= MAX_RECORDING_BYTES) {
-        answers[key] = id;
-        spoke = true;
-      } else delete answers[key];
-    }
-    const wroteEssay = spoke || quiz.sections.some((sec, si) => sec.questions.some((q, qi) => q.type === "essay" && wordCount(answers[`${si}-${qi}`]) > 0));
-
-    const result = grade(quiz.sections, answers);
-    const band = bandFor(quiz.ielts, result.correct, result.total);
-    const now = Date.now();
-    if (!preview) {
-      await ctx.db.insert("attempts", {
-        studentId: student!._id,
-        quizId: quiz._id,
-        ...result,
-        band: band ?? undefined,
-        answers,
-        submittedAt: now,
-        ...(args.durationSec != null ? { durationSec: Math.max(0, Math.min(86_400, Math.round(args.durationSec))) } : {}),
-        ...(wroteEssay ? { reviewStatus: "pending" as const } : {}),
-      });
-      await ctx.db.patch(student!._id, { lastSeenAt: now });
-    }
+    let answers: Answers;
+    let wroteEssay: boolean;
+    let result: ReturnType<typeof grade>;
+    let band: number | null;
+    let now: number;
+    if (preview) {
+      ({ answers, needsReview: wroteEssay } = await cleanAnswers(ctx, quiz, args.answers, true));
+      result = grade(quiz.sections, answers);
+      band = bandFor(quiz.ielts, result.correct, result.total);
+      now = Date.now();
+    } else ({ answers, needsReview: wroteEssay, result, band, now } = await saveAttempt(ctx, quiz, student!._id, args.answers, { durationSec: args.durationSec }));
 
     // Answers and explanations only for questions the student actually answered; a blank
     // question keeps its answer hidden so it can't be copied on the next try or passed on.

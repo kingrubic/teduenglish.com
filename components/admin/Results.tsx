@@ -171,6 +171,7 @@ export default function Results() {
                       {r.reviewStatus === "pending" && <span className="status draft">✍️ Chờ nhận xét</span>}
                       {r.reviewStatus === "done" && <span className="status on">✍️ Đã nhận xét</span>}
                       {lockAt > 0 && r.total > 0 && !r.reopened && (r.correct / r.total) * 100 >= lockAt && <span className="sub">🔒 Đã khoá bài</span>}
+                      {r.leftQuiz && <span className="sub state-low">🚪 Tự nộp: em rời bài, tài khoản bị khoá</span>}
                     </td>
                     <td style={{ minWidth: 110 }}>
                       {r.total > 0 && (

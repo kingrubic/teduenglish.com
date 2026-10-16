@@ -83,10 +83,26 @@ export default defineSchema({
     lastSeenAt: v.optional(v.number()),
     // Read-only code for parents (/phu-huynh).
     parentCode: v.optional(v.string()),
+    // Why the account was locked automatically (left a guarded test); cleared when a teacher unlocks it.
+    lockedReason: v.optional(v.string()),
+    lockedAt: v.optional(v.number()),
   })
     .index("by_code", ["code"])
     .index("by_parentCode", ["parentCode"])
     .index("by_class", ["className"]),
+
+  // A student leaving a guarded test: "away" (with the answers at that moment), then back or locked.
+  focusEvents: defineTable({
+    studentId: v.id("students"),
+    quizId: v.id("quizzes"),
+    at: v.number(),
+    backAt: v.optional(v.number()),
+    locked: v.optional(v.boolean()),
+    answers: v.optional(v.record(v.string(), v.union(v.string(), v.number()))),
+    durationSec: v.optional(v.number()),
+  })
+    .index("by_student_quiz", ["studentId", "quizId", "at"])
+    .index("by_at", ["at"]),
 
   studentSessions: defineTable({
     studentId: v.id("students"),
@@ -133,6 +149,8 @@ export default defineSchema({
     timer: timerValidator,
     accent: accentValidator, // listening voice, default "uk"
     speakPrep: v.optional(v.number()), // Speaking: seconds to get ready before the first question (15 or 30)
+    // Leaving the test (other tab/app) warns once, then locks the account. Unset → on for IELTS Reading/Writing and essays.
+    focusGuard: v.optional(v.boolean()),
     term: termValidator, // semester group inside the folder
     order: v.number(),
     sections: v.array(sectionValidator),
@@ -163,6 +181,8 @@ export default defineSchema({
     reopened: v.optional(v.boolean()),
     // Speaking recordings were deleted after the keep period (answers then hold "").
     recordingsPurged: v.optional(v.boolean()),
+    // Submitted automatically because the student left a guarded test and was locked out.
+    leftQuiz: v.optional(v.boolean()),
     essayReviews: v.optional(v.record(v.string(), essayReviewValidator)),
     reviewedAt: v.optional(v.number()),
     reviewedBy: v.optional(v.string()),

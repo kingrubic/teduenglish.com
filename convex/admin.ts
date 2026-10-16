@@ -148,6 +148,7 @@ async function attemptRow(ctx: { db: QueryCtx["db"] }, a: Doc<"attempts">) {
     reviewStatus: a.reviewStatus ?? null,
     reopened: !!a.reopened,
     durationSec: a.durationSec ?? null,
+    leftQuiz: !!a.leftQuiz,
   };
 }
 
@@ -296,6 +297,8 @@ export const students = query({
         active: s.active,
         note: s.note ?? "",
         parentCode: s.parentCode ?? "",
+        lockedReason: s.lockedReason ?? null,
+        lockedAt: s.lockedAt ?? null,
         createdAt: s.createdAt,
         lastSeenAt: s.lastSeenAt ?? null,
         attemptCount: stats.get(s._id)?.count ?? 0,
@@ -341,7 +344,7 @@ export const saveStudent = mutation({
     if (args.id) {
       const prev = await ctx.db.get(args.id);
       if (!prev) fail("Không tìm thấy học sinh.");
-      await ctx.db.patch(args.id, { ...data, parentCode: parentCodeFor(code) });
+      await ctx.db.patch(args.id, { ...data, parentCode: parentCodeFor(code), ...(args.active ? { lockedReason: undefined, lockedAt: undefined } : {}) });
       // Changing the code or locking the student signs them out everywhere.
       if (prev.code !== code || !args.active) await clearStudentSessions(ctx, args.id);
       if (prev.code !== code) await clearParentSessions(ctx, args.id);
@@ -631,6 +634,7 @@ const quizFields = {
   accent: accentValidator,
   speakPrep: v.optional(v.number()),
   term: termValidator,
+  focusGuard: v.optional(v.boolean()),
   sections: v.array(sectionValidator),
 };
 
@@ -690,6 +694,7 @@ export const saveQuiz = mutation({
       ...(args.timer ? { timer: args.timer } : {}),
       ...(args.accent ? { accent: args.accent } : {}),
       ...(hasSpeak(sections) ? { speakPrep: args.speakPrep === 30 ? 30 : 15 } : {}),
+      ...(args.focusGuard != null ? { focusGuard: args.focusGuard } : {}),
       ...(args.term ? { term: args.term } : {}),
       sections,
       updatedAt: Date.now(),
