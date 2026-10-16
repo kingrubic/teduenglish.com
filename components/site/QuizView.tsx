@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Answers } from "@/convex/model";
-import { SPEAKING_CRITERIA, WRITING_CRITERIA, normAnswer, parseDialogue, wordCount } from "@/convex/model";
+import { RECORDING_KEEP_DAYS, SPEAKING_CRITERIA, WRITING_CRITERIA, normAnswer, parseDialogue, wordCount } from "@/convex/model";
 import { Rich, copyText, errMsg, sdel, sget, shuffle, signalReady, sset, stamp } from "@/lib/ui";
 import { GateLogin, GateNoAccess, Loading, Missing, Swoosh } from "./parts";
 import { useSite } from "./SiteShell";
@@ -944,7 +944,7 @@ function MyWriting({ id, speaking }: { id: string; speaking?: boolean }) {
           {a.speaking && (
             <div className="mw-essay">
               {a.speaking.purged ? (
-                <p className="tiny muted">Ghi âm đã được xoá sau 90 ngày; điểm và nhận xét vẫn được giữ.</p>
+                <p className="tiny muted">Ghi âm đã được xoá sau {RECORDING_KEEP_DAYS} ngày; điểm và nhận xét vẫn được giữ.</p>
               ) : (
                 <div className="speak-replay">
                   {a.speaking.recordings.map((r, i) => (

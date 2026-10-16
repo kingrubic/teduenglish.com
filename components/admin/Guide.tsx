@@ -474,7 +474,7 @@ export default function Guide() {
                     <td>
                       Nút <b>🎤 Dùng mẫu IELTS Speaking</b> tạo sẵn cả 3 phần. Mỗi câu có thời gian trả lời (Part 1 ≈ 30 giây, Part 3 ≈ 45 giây) và thời gian suy nghĩ (thẻ đề Part 2: 60
                       giây chuẩn bị, 2 phút nói). Học sinh kiểm tra micro, chuẩn bị 15 hoặc 30 giây, rồi máy tự đọc từng câu, kêu “tít” và thu âm. Thầy cô nghe lại ở trang Kết quả và chấm
-                      band 4 tiêu chí Speaking. Ghi âm tự xoá sau 90 ngày, điểm và nhận xét vẫn giữ.
+                      band 4 tiêu chí Speaking. Ghi âm tự xoá sau 30 ngày, điểm và nhận xét vẫn giữ.
                     </td>
                   </tr>
                   <tr>

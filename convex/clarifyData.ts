@@ -54,7 +54,7 @@ export const DONE: { area: string; icon: string; items: string[] }[] = [
       "Mã phụ huynh = mã học sinh thêm “ph” trước 4 số cuối (thanhtoan3580 → thanhtoanph3580); phụ huynh chỉ xem kết quả của con (tiến độ, % hoàn thành, bài chưa làm, điểm IELTS & Global Success) tại /phu-huynh, không thấy bảng xếp hạng",
       "Học sinh xem thứ hạng IELTS của mình trong lớp ngay trên trang học tập (tên các bạn khác được ẩn)",
       "Đáp án chỉ hiện cho những câu học sinh đã làm và nộp; câu bỏ trống không hiện đáp án",
-      "IELTS Speaking: kiểm tra micro, chuẩn bị 15/30 giây, máy đọc câu hỏi + tiếng “tít” + thu âm từng câu; thầy nghe và chấm band 4 tiêu chí; ghi âm tự xoá sau 90 ngày",
+      "IELTS Speaking: kiểm tra micro, chuẩn bị 15/30 giây, máy đọc câu hỏi + tiếng “tít” + thu âm từng câu; thầy nghe và chấm band 4 tiêu chí; ghi âm tự xoá sau 30 ngày",
       "Tài liệu: thêm bài nghe MP3 (cạnh PDF và link), học sinh nghe ngay trong danh sách hoặc tải về",
       "Phần nghe: thêm file MP3 của thầy (tối đa 40 MB), học sinh nghe bằng trình phát có chỉnh tốc độ; vẫn dùng được giọng máy đọc lời thoại",
       "Trang hướng dẫn sử dụng có hình minh hoạ",

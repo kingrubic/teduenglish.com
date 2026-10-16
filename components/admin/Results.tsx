@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { SPEAKING_CRITERIA, SPEAKING_REVIEW_KEY, WRITING_CRITERIA, writingBand } from "@/convex/model";
+import { RECORDING_KEEP_DAYS, SPEAKING_CRITERIA, SPEAKING_REVIEW_KEY, WRITING_CRITERIA, writingBand } from "@/convex/model";
 import { downloadXlsx } from "@/lib/excel";
 import { Rich, errMsg, stamp } from "@/lib/ui";
 import { Modal, useAdmin, useRun } from "./AdminShell";
@@ -471,7 +471,7 @@ function SpeakingReview({ attempt, onDone }: { attempt: Detail; onDone: () => vo
         <p className="eyebrow">
           Bài nói · {answered}/{sp.items.length} câu có ghi âm
         </p>
-        {sp.purged && <p className="small muted">Ghi âm đã tự xoá sau 90 ngày; điểm và nhận xét vẫn còn.</p>}
+        {sp.purged && <p className="small muted">Ghi âm đã tự xoá sau {RECORDING_KEEP_DAYS} ngày; điểm và nhận xét vẫn còn.</p>}
         <div className="speak-replay">
           {sp.items.map((it) => (
             <div key={it.key} className="speak-replay-row">
