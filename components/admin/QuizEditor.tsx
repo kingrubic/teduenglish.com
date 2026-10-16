@@ -442,9 +442,9 @@ export default function QuizEditor({ id }: { id: string }) {
               Hiện cho học sinh
             </label>
             {!hasSpeakQ && (
-              <label className="switch" title="Lần 1 rời bài: cảnh báo, 5 giây để quay lại. Lần 2: nộp bài và khoá tài khoản.">
+              <label className="switch" title="Rời bài lần 1: nhắc nhở. Lần 2: 10 giây để quay lại. Lần 3: 5 giây. Quá giờ thì khoá. Lần 4: nộp bài và khoá tài khoản ngay.">
                 <input type="checkbox" checked={guardOn} onChange={(e) => update({ focusGuard: e.target.checked })} />
-                🔒 Chống chuyển tab (lần 1 cảnh báo, lần 2 khoá tài khoản)
+                🔒 Chống chuyển tab (lần 1 nhắc, lần 2 đếm 10 giây, lần 3 đếm 5 giây, lần 4 khoá tài khoản)
               </label>
             )}
             <label className="switch">

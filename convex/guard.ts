@@ -5,15 +5,19 @@ import { internalMutation, mutation, type MutationCtx, type QueryCtx } from "./_
 import { canOpen, fail, focusGuardOn, quizBySlug, requireAdmin, saveAttempt, studentFromToken } from "./lib";
 
 /*
- * Guarded tests (IELTS Reading/Writing by default): leaving the page for another tab or app warns once
- * with a 5-second countdown; staying away longer, or leaving a second time, submits what the student
- * has done and locks the account until a teacher unlocks it. The server enforces the deadline, so
- * closing the tab doesn't escape it.
+ * Guarded tests (IELTS Reading/Writing by default). Leaving the page for another tab or app:
+ *   1st time: a reminder only;
+ *   2nd time: a 10-second countdown, not back in time → locked;
+ *   3rd time: a 5-second countdown, not back in time → locked;
+ *   4th time: locked at once.
+ * A lock submits what the student has done and closes the account until a teacher unlocks it.
+ * The server enforces the countdown, so closing the tab doesn't escape it.
  */
 
-export const WARN_SECONDS = 5;
+/** Countdown for each time away, by how many times the student already left; past the end → locked at once. */
+export const COUNTDOWNS = [0, 10, 5];
 const GRACE_MS = 1500; // network delay on the way back
-const LIMIT_MS = WARN_SECONDS * 1000 + GRACE_MS;
+const limitMs = (seconds: number) => seconds * 1000 + GRACE_MS;
 
 const answersArg = v.record(v.string(), v.union(v.string(), v.number()));
 
@@ -45,36 +49,43 @@ async function guardedTest(ctx: MutationCtx, token: string, id: string) {
 }
 
 /**
- * The student left the test page. First time: a warning with a deadline; second time: locked.
+ * The student left the test page: a reminder, then a countdown, then a lock (see above).
  * `awayMs`: how long ago they left, measured by the page (phones pause pages in the background,
  * so this call can arrive late).
  */
 export const away = mutation({
   args: { token: v.string(), id: v.string(), answers: answersArg, durationSec: v.optional(v.number()), awayMs: v.optional(v.number()) },
-  handler: async (ctx, args): Promise<{ status: "off" } | { status: "warned"; eventId: Id<"focusEvents">; seconds: number } | { status: "locked" }> => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ status: "off" } | { status: "reminded"; eventId: Id<"focusEvents"> } | { status: "countdown"; eventId: Id<"focusEvents">; seconds: number } | { status: "locked" }> => {
     const t = await guardedTest(ctx, args.token, args.id);
     if (!t) return { status: "off" };
     const before = await awayCount(ctx, t.student._id, t.quiz);
     const ago = Math.max(0, Math.min(args.awayMs ?? 0, 10 * 60_000));
     const now = Date.now() - ago;
-    const lock = before >= 1 || ago > LIMIT_MS;
+    const seconds = COUNTDOWNS[before] ?? -1; // 0: reminder only, -1: no more chances
+    const countdown = seconds > 0;
+    const lock = seconds < 0 || (countdown && ago > limitMs(seconds));
     const eventId = await ctx.db.insert("focusEvents", {
       studentId: t.student._id,
       quizId: t.quiz._id,
       at: now,
       ...(args.durationSec != null ? { durationSec: args.durationSec } : {}),
-      ...(lock ? { locked: true } : { answers: args.answers }),
+      ...(countdown ? { countdown: true, seconds } : {}),
+      ...(lock ? { locked: true } : countdown ? { answers: args.answers } : {}),
     });
     if (lock) {
       await lockStudent(ctx, t.student, t.quiz, args.answers, args.durationSec);
       return { status: "locked" };
     }
-    await ctx.scheduler.runAfter(LIMIT_MS - ago, internal.guard.deadline, { eventId });
-    return { status: "warned", eventId, seconds: WARN_SECONDS };
+    if (!countdown) return { status: "reminded", eventId };
+    await ctx.scheduler.runAfter(limitMs(seconds) - ago, internal.guard.deadline, { eventId });
+    return { status: "countdown", eventId, seconds };
   },
 });
 
-/** The student came back; too late means locked. */
+/** The student came back; too late after a countdown means locked. */
 export const back = mutation({
   args: { token: v.string(), eventId: v.id("focusEvents"), awayMs: v.optional(v.number()) },
   handler: async (ctx, args): Promise<{ status: "ok" | "locked" }> => {
@@ -83,7 +94,8 @@ export const back = mutation({
     if (!ev || !student || ev.studentId !== student._id) return { status: "locked" };
     if (ev.locked) return { status: "locked" };
     const now = Date.now();
-    if (now - ev.at > LIMIT_MS || (args.awayMs ?? 0) > LIMIT_MS) {
+    const limit = limitMs(ev.seconds ?? COUNTDOWNS[1]);
+    if (ev.countdown && (now - ev.at > limit || (args.awayMs ?? 0) > limit)) {
       const quiz = await ctx.db.get(ev.quizId);
       await ctx.db.patch(ev._id, { locked: true, backAt: now, answers: undefined });
       if (quiz) await lockStudent(ctx, student, quiz, ev.answers ?? {}, ev.durationSec);
@@ -100,7 +112,7 @@ export const deadline = internalMutation({
   args: { eventId: v.id("focusEvents") },
   handler: async (ctx, args) => {
     const ev = await ctx.db.get(args.eventId);
-    if (!ev || ev.backAt || ev.locked) return;
+    if (!ev || !ev.countdown || ev.backAt || ev.locked) return;
     const student = await ctx.db.get(ev.studentId);
     const quiz = await ctx.db.get(ev.quizId);
     await ctx.db.patch(ev._id, { locked: true, answers: undefined });

@@ -888,7 +888,7 @@ const FAQ: [string, React.ReactNode][] = [
   ],
   [
     "Chống chuyển tab khi làm bài hoạt động thế nào?",
-    "Bài IELTS Reading, IELTS Writing và bài có phần viết tự bật “🔒 Chống chuyển tab” (thầy cô bật/tắt từng bài trong trình soạn). Khi đang làm, nếu em chuyển tab, mở ứng dụng hay trình duyệt khác: lần 1 hiện cảnh báo, tên tab nhấp nháy, kêu bíp và đếm ngược 5 giây để quay lại; quá 5 giây, hoặc rời bài lần 2, phần bài em đã làm được tự nộp (có nhãn “🚪 Tự nộp” ở trang Kết quả) và tài khoản bị khoá. Mở lại: trang Học sinh → “🔓 Mở khoá”. Lưu ý: hệ thống không biết em dùng thêm máy thứ hai, và cuộc gọi đến hay tắt màn hình điện thoại cũng bị tính là rời bài.",
+    "Bài IELTS Reading, IELTS Writing và bài có phần viết tự bật “🔒 Chống chuyển tab” (thầy cô bật/tắt từng bài trong trình soạn). Khi đang làm, nếu em chuyển tab, mở ứng dụng hay trình duyệt khác: lần 1 chỉ nhắc nhở (tên tab nhấp nháy, kêu bíp); lần 2 đếm ngược 10 giây và lần 3 đếm ngược 5 giây để quay lại; quá giờ, hoặc rời bài lần 4, phần bài em đã làm được tự nộp (có nhãn “🚪 Tự nộp” ở trang Kết quả) và tài khoản bị khoá. Mở lại: trang Học sinh → “🔓 Mở khoá”. Lưu ý: hệ thống không biết em dùng thêm máy thứ hai, và cuộc gọi đến hay tắt màn hình điện thoại cũng bị tính là rời bài.",
   ],
   [
     "Vì sao có bài bị mờ đi, học sinh không bấm vào được?",

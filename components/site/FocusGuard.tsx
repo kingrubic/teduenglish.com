@@ -7,9 +7,11 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
 /*
- * Guarded tests: leaving the page (another tab, app or browser window) warns once with a 5-second
- * countdown; a second time, or staying away too long, submits the work and locks the account.
- * The server keeps the count and enforces the deadline; this component detects leaving and shows it.
+ * Guarded tests: leaving the page (another tab, app or browser window) gets a reminder the first time,
+ * a 10-second countdown the second time and a 5-second one the third (not back in time → locked),
+ * and a lock the fourth time.
+ * A lock submits the work and closes the account. The server keeps the count and enforces the
+ * countdown; this component detects leaving and shows what happens.
  */
 
 let paused = 0;
@@ -23,9 +25,17 @@ export function withGuardPaused<T>(fn: () => T): T {
   }
 }
 
+/** Seconds to come back the 2nd and 3rd time (matches the server). */
+const SECOND = 10;
+const THIRD = 5;
+
 const isAway = () => document.visibilityState === "hidden" || !document.hasFocus();
 
-type Phase = { kind: "idle" } | { kind: "away"; until: number } | { kind: "back" } | { kind: "locked" };
+type Phase =
+  | { kind: "idle" }
+  | { kind: "away"; until: number | null; seconds: number } // until null: first time, a reminder without a countdown
+  | { kind: "back" }
+  | { kind: "locked" };
 
 export default function FocusGuard({
   id,
@@ -37,7 +47,7 @@ export default function FocusGuard({
 }: {
   id: string;
   token: string;
-  /** Warnings already used on this test (from the server). */
+  /** Times the student already left this test (from the server). */
   used: number;
   /** Current answers and elapsed seconds, sent along so a lock can submit them. */
   snapshot: () => { answers: Record<string, string | number>; durationSec: number };
@@ -106,9 +116,8 @@ export default function FocusGuard({
           locked.current();
           return;
         }
-        setWarned(1);
-        const until = leftAt + r.seconds * 1000;
-        setPhase({ kind: "away", until });
+        setWarned((n) => n + 1);
+        setPhase(r.status === "countdown" ? { kind: "away", until: leftAt + r.seconds * 1000, seconds: r.seconds } : { kind: "away", until: null, seconds: 0 });
         beep();
         // Wait for the student to come back.
         await new Promise<void>((resolve) => {
@@ -167,22 +176,40 @@ export default function FocusGuard({
   }, [phase.kind]);
 
   const banner = (
-    <p className={`guard-banner${warned ? " used" : ""}`} role="note">
+    <p className={`guard-banner${warned >= 2 ? " used" : ""}`} role="note">
       🔒 <b>Bài có giám sát:</b> không chuyển tab, không mở ứng dụng hay trình duyệt khác cho đến khi nộp bài.{" "}
-      {warned ? <b>Em đã dùng hết lần cảnh báo: rời bài lần nữa là tài khoản bị khoá ngay.</b> : "Lần đầu được cảnh báo 5 giây để quay lại, lần thứ hai tài khoản bị khoá."}
+      {warned >= 3 ? (
+        <b>Em đã rời bài 3 lần: rời bài lần nữa là tài khoản bị khoá ngay.</b>
+      ) : warned === 2 ? (
+        <b>Em đã rời bài 2 lần: lần tiếp theo chỉ có {THIRD} giây để quay lại.</b>
+      ) : warned === 1 ? (
+        <b>Em đã bị nhắc 1 lần: lần rời bài tiếp theo chỉ có {SECOND} giây để quay lại.</b>
+      ) : (
+        `Lần 1 được nhắc nhở, lần 2 có ${SECOND} giây và lần 3 có ${THIRD} giây để quay lại, lần 4 tài khoản bị khoá.`
+      )}
     </p>
   );
 
   let overlay: React.ReactNode = null;
-  if (phase.kind === "away") {
+  if (phase.kind === "away" && phase.until == null)
+    overlay = (
+      <div className="guard-overlay" role="alertdialog" aria-live="assertive" aria-label="Nhắc nhở rời bài">
+        <div className="guard-box">
+          <p className="guard-icon">⚠️</p>
+          <h2>Em vừa rời khỏi bài!</h2>
+          <p>Đây là lần nhắc nhở đầu tiên. Em quay lại làm bài ngay nhé.</p>
+        </div>
+      </div>
+    );
+  else if (phase.kind === "away" && phase.until != null) {
     const left = Math.max(0, Math.ceil((phase.until - now) / 1000));
     overlay = (
       <div className="guard-overlay danger" role="alertdialog" aria-live="assertive" aria-label="Cảnh báo rời bài">
         <div className="guard-box">
           <p className="guard-icon">⚠️</p>
-          <h2>Em vừa rời khỏi bài!</h2>
+          <h2>Em rời khỏi bài lần {warned}!</h2>
           <p className="guard-count">{left}</p>
-          <p>Quay lại trang này ngay. Hết {5} giây mà chưa quay lại, bài sẽ được nộp và tài khoản bị khoá.</p>
+          <p>Quay lại trang này ngay. Hết {phase.seconds} giây mà chưa quay lại, bài sẽ được nộp và tài khoản bị khoá.</p>
         </div>
       </div>
     );
@@ -191,8 +218,14 @@ export default function FocusGuard({
       <div className="guard-overlay" role="alertdialog" aria-label="Cảnh báo">
         <div className="guard-box">
           <p className="guard-icon">✋</p>
-          <h2>Đây là lần cảnh báo duy nhất</h2>
-          <p>Em đã quay lại kịp. Từ giờ đến khi nộp bài, nếu em chuyển tab hoặc mở ứng dụng khác, tài khoản sẽ bị khoá ngay.</p>
+          <h2>{warned >= 3 ? "Đây là lần cảnh báo cuối cùng" : warned === 2 ? "Cảnh báo lần 2" : "Nhắc nhở lần 1"}</h2>
+          <p>
+            {warned >= 3
+              ? "Em đã quay lại kịp. Từ giờ đến khi nộp bài, nếu em rời bài lần nữa, tài khoản sẽ bị khoá ngay."
+              : warned === 2
+                ? `Em đã quay lại kịp. Lần sau rời bài, em chỉ có ${THIRD} giây để quay lại; lần thứ tư tài khoản bị khoá ngay.`
+                : `Em không được chuyển tab hay mở ứng dụng khác khi làm bài. Lần sau rời bài, em chỉ có ${SECOND} giây để quay lại.`}
+          </p>
           <button className="btn btn-primary" type="button" autoFocus onClick={() => setPhase({ kind: "idle" })}>
             Em hiểu, làm bài tiếp
           </button>

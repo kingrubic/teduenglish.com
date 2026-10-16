@@ -55,7 +55,7 @@ export const DONE: { area: string; icon: string; items: string[] }[] = [
       "Học sinh xem thứ hạng IELTS của mình trong lớp ngay trên trang học tập (tên các bạn khác được ẩn)",
       "Đáp án chỉ hiện cho những câu học sinh đã làm và nộp; câu bỏ trống không hiện đáp án",
       "IELTS Speaking: kiểm tra micro, chuẩn bị 15/30 giây, máy đọc câu hỏi + tiếng “tít” + thu âm từng câu; thầy nghe và chấm band 4 tiêu chí; ghi âm tự xoá sau 5 ngày (đủ để thầy chấm)",
-      "Chống chuyển tab (Reading/Writing): lần 1 cảnh báo + đếm ngược 5 giây, lần 2 hoặc quá giờ thì tự nộp bài và khoá tài khoản; thầy mở khoá ở trang Học sinh",
+      "Chống chuyển tab (Reading/Writing): lần 1 nhắc nhở, lần 2 đếm ngược 10 giây, lần 3 đếm ngược 5 giây (quá giờ thì khoá), lần 4 tự nộp bài và khoá tài khoản ngay; thầy mở khoá ở trang Học sinh",
       "Tài liệu: thêm bài nghe MP3 (cạnh PDF và link), học sinh nghe ngay trong danh sách hoặc tải về",
       "Phần nghe: thêm file MP3 của thầy (tối đa 40 MB), học sinh nghe bằng trình phát có chỉnh tốc độ; vẫn dùng được giọng máy đọc lời thoại",
       "Trang hướng dẫn sử dụng có hình minh hoạ",

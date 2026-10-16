@@ -97,6 +97,9 @@ export default defineSchema({
     quizId: v.id("quizzes"),
     at: v.number(),
     backAt: v.optional(v.number()),
+    // This time away had a countdown (2nd and 3rd time); coming back late locks the account.
+    countdown: v.optional(v.boolean()),
+    seconds: v.optional(v.number()), // length of that countdown
     locked: v.optional(v.boolean()),
     answers: v.optional(v.record(v.string(), v.union(v.string(), v.number()))),
     durationSec: v.optional(v.number()),
