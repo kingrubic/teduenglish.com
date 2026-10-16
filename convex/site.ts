@@ -113,7 +113,7 @@ export const document = query({
   handler: async (ctx, args) => {
     const id = ctx.db.normalizeId("resources", args.id);
     const r = id ? await ctx.db.get(id) : null;
-    if (!r?.file || r.hidden) return null;
+    if (!r?.file || r.file.media === "audio" || r.hidden) return null; // audio plays in the list, not the PDF reader
     const student = await studentFromToken(ctx, args.token);
     if (!student || !canOpen(student, r.folder)) return null;
     const folder = await folderBySlug(ctx, r.folder);

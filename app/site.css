@@ -236,7 +236,7 @@ main { flex: 1; outline: none; }
 .btn-block { width: 100%; }
 
 .field { display: flex; flex-direction: column; gap: 8px; }
-.field label { font-weight: 700; font-size: 0.92rem; }
+.field label, .field .label-like { font-weight: 700; font-size: 0.92rem; }
 .field .hint { font-weight: 400; color: var(--muted); }
 .input, .select, .textarea {
   width: 100%;
@@ -754,3 +754,4 @@ td code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospac
 .explain.hidden-answer { color: var(--muted); font-style: italic; }
 .rank-panel { margin-top: 18px; }
 .rank-panel .speed { align-self: flex-start; }
+.section-audio { flex: 1 1 260px; min-width: 0; max-width: 100%; height: 44px; }

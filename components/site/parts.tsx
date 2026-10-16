@@ -15,7 +15,7 @@ export type ResourceRow = Dashboard["resources"][number];
 export type DoneMap = Dashboard["done"];
 export type FolderInfo = { id: string; badge: string; name: string; detail: string };
 
-export const KIND: Record<string, string> = { exercise: "Bài tập", game: "Trò chơi", video: "Video", doc: "Tài liệu" };
+export const KIND: Record<string, string> = { exercise: "Bài tập", game: "Trò chơi", video: "Video", doc: "Tài liệu", audio: "Bài nghe" };
 export const TONES = ["t1", "", "t2"];
 
 /** The rising arrow from the logo, drawn as a soft arc. */
@@ -130,6 +130,41 @@ export function QuizButton({ quiz, done }: { quiz: QuizMeta; done: DoneMap }) {
 
 export function ResourceRowLink({ r }: { r: ResourceRow }) {
   const { docId, openDoc, toast } = useSite();
+  if (r.file?.audio) {
+    const file = r.file;
+    return (
+      <div className="res-row res-audio">
+        <span className="res-main">
+          <span className="kind">
+            {KIND[r.kind] || "Bài nghe"} · 🎧 {formatBytes(file.size)}
+          </span>
+          <span className="r-title">{r.title}</span>
+          {r.description && <span className="r-desc">{r.description}</span>}
+        </span>
+        {file.url && (
+          <span className="res-audio-player">
+            <audio
+              controls
+              preload="none"
+              src={file.url}
+              aria-label={`Nghe ${r.title}`}
+              onPlay={(e) => document.querySelectorAll("audio").forEach((x) => x !== e.currentTarget && x.pause())}
+            />
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={() => {
+                toast("Đang tải file về…");
+                downloadFile(file.url!, file.name);
+              }}
+            >
+              Tải về
+            </button>
+          </span>
+        )}
+      </div>
+    );
+  }
   if (r.file) {
     const file = r.file;
     return (

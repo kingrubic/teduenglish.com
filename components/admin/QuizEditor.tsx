@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Doc, Id } from "@/convex/_generated/dataModel";
-import { slugify, validateSections, type Section } from "@/convex/model";
+import { MAX_AUDIO_BYTES, formatBytes, slugify, validateSections, type Section } from "@/convex/model";
 import { parseLoose } from "@/lib/loose-json";
 import { errMsg } from "@/lib/ui";
 import { Modal, useAdmin } from "./AdminShell";
@@ -29,7 +29,7 @@ type EQ = {
   image: EImage | null;
 };
 type QuizSections = Doc<"quizzes">["sections"];
-type ES = { uid: string; title: string; kind: "plain" | "listen" | "passage"; media: string; questions: EQ[] };
+type ES = { uid: string; title: string; kind: "plain" | "listen" | "passage"; media: string; audio: EImage | null; questions: EQ[] };
 type Draft = {
   slug: string;
   folder: string;
@@ -56,6 +56,7 @@ function ieltsWritingTemplate(): ES[] {
       title: "Writing Task 1",
       kind: "plain",
       media: "",
+      audio: null,
       questions: [
         {
           ...blankQ("essay"),
@@ -71,6 +72,7 @@ function ieltsWritingTemplate(): ES[] {
       title: "Writing Task 2",
       kind: "plain",
       media: "",
+      audio: null,
       questions: [
         {
           ...blankQ("essay"),
@@ -83,14 +85,15 @@ function ieltsWritingTemplate(): ES[] {
     },
   ];
 }
-const blankS = (): ES => ({ uid: uid(), title: "", kind: "plain", media: "", questions: [blankQ("mcq")] });
+const blankS = (): ES => ({ uid: uid(), title: "", kind: "plain", media: "", audio: null, questions: [blankQ("mcq")] });
 
 function fromSections(sections: Section[], imageUrls: Record<string, string> = {}): ES[] {
   return sections.map((s) => ({
     uid: uid(),
     title: s.title,
-    kind: s.listen ? "listen" : s.passage ? "passage" : "plain",
+    kind: s.listen || s.audio ? "listen" : s.passage ? "passage" : "plain",
     media: s.listen ?? s.passage ?? "",
+    audio: s.audio ? { storageId: s.audio.storageId as Id<"_storage">, name: s.audio.name, url: imageUrls[s.audio.storageId] ?? "" } : null,
     questions: s.questions.map((q): EQ => {
       const base = {
         ...blankQ(q.type),
@@ -110,6 +113,7 @@ function toSections(es: ES[]): QuizSections {
   return es.map((s) => ({
     title: s.title,
     ...(s.kind === "listen" ? { listen: s.media } : {}),
+    ...(s.kind === "listen" && s.audio ? { audio: { storageId: s.audio.storageId, name: s.audio.name } } : {}),
     ...(s.kind === "passage" ? { passage: s.media } : {}),
     questions: s.questions.map((q) => {
       const base = {
@@ -125,7 +129,7 @@ function toSections(es: ES[]): QuizSections {
   }));
 }
 
-function fromDoc(d: Doc<"quizzes"> & { imageUrls: Record<string, string> }): Draft {
+function fromDoc(d: Doc<"quizzes"> & { fileUrls: Record<string, string> }): Draft {
   return {
     slug: d.slug,
     folder: d.folder,
@@ -139,7 +143,7 @@ function fromDoc(d: Doc<"quizzes"> & { imageUrls: Record<string, string> }): Dra
     accent: d.accent ?? "uk",
     term: d.term ?? "",
     published: d.published,
-    sections: fromSections(d.sections, d.imageUrls),
+    sections: fromSections(d.sections, d.fileUrls),
   };
 }
 
@@ -406,18 +410,28 @@ export default function QuizEditor({ id }: { id: string }) {
               <label htmlFor={`s-kind-${s.uid}`}>Dạng phần</label>
               <select className="select compact" id={`s-kind-${s.uid}`} value={s.kind} onChange={(e) => setSection(si, { kind: e.target.value as ES["kind"] })}>
                 <option value="plain">Câu hỏi thường</option>
-                <option value="listen">Nghe (máy đọc lời thoại)</option>
+                <option value="listen">Nghe (file MP3 hoặc máy đọc lời thoại)</option>
                 <option value="passage">Đọc hiểu (có bài đọc)</option>
               </select>
             </div>
           </div>
+          {s.kind === "listen" && (
+            <div className="field">
+              <span className="label-like">
+                File nghe MP3 <span className="hint">— có file thì học sinh nghe file này thay cho giọng máy đọc.</span>
+              </span>
+              <AudioField audio={s.audio} onChange={(audio) => setSection(si, { audio })} />
+            </div>
+          )}
           {s.kind !== "plain" && (
             <div className="field">
               <label htmlFor={`s-media-${s.uid}`}>
-                {s.kind === "listen" ? "Lời thoại" : "Bài đọc"}{" "}
+                {s.kind === "listen" ? (s.audio ? "Lời thoại (không bắt buộc)" : "Lời thoại") : "Bài đọc"}{" "}
                 <span className="hint">
                   {s.kind === "listen"
-                    ? "— mỗi dòng một câu, dạng “Tên: lời nói”; mỗi người một giọng. Học sinh xem được lời thoại sau khi nộp."
+                    ? s.audio
+                      ? "— dán lời thoại của file MP3 nếu có; học sinh xem được sau khi nộp bài."
+                      : "— mỗi dòng một câu, dạng “Tên: lời nói”; mỗi người một giọng. Học sinh xem được lời thoại sau khi nộp."
                     : "— dòng đầu là tiêu đề, để trống một dòng rồi viết các đoạn."}
                 </span>
               </label>
@@ -641,6 +655,10 @@ function JsonDialog({ draft, onClose, onApply }: { draft: Draft; onClose: () => 
       const sections = (obj.sections as Record<string, unknown>[]).map((s) => ({
         title: String(s.title ?? ""),
         ...(s.listen ? { listen: String(s.listen) } : {}),
+        // Keeps an uploaded MP3 when the teacher edits the exported JSON and loads it back.
+        ...(s.audio && typeof s.audio === "object" && "storageId" in s.audio
+          ? { audio: { storageId: String((s.audio as { storageId: unknown }).storageId), name: String((s.audio as { name?: unknown }).name ?? "audio.mp3") } }
+          : {}),
         ...(s.passage ? { passage: String(s.passage) } : {}),
         questions: ((s.questions as Record<string, unknown>[]) ?? []).map((q) =>
           q.type === "essay"
@@ -726,6 +744,49 @@ function ImageField({ image, onChange }: { image: EImage | null; onChange: (img:
       <input type="file" accept="image/*" hidden disabled={busy} onChange={(e) => pick(e.target.files?.[0])} />
       <span className="link-btn">{busy ? "Đang tải ảnh…" : "+ Thêm ảnh minh hoạ"}</span>
       <span className="tiny muted">(biểu đồ IELTS Task 1, tranh, bản đồ…)</span>
+    </label>
+  );
+}
+
+/** Recorded MP3 for a listening part, uploaded to Convex storage. */
+function AudioField({ audio, onChange }: { audio: EImage | null; onChange: (a: EImage | null) => void }) {
+  const { token, toast } = useAdmin();
+  const getUploadUrl = useMutation(api.admin.generateUploadUrl);
+  const [busy, setBusy] = useState(false);
+
+  async function pick(file: File | undefined) {
+    if (!file) return;
+    const type = file.type || (/\.mp3$/i.test(file.name) ? "audio/mpeg" : "");
+    if (!type.startsWith("audio/")) return toast("Chỉ nhận file âm thanh (MP3, M4A, WAV…).");
+    if (file.size > MAX_AUDIO_BYTES) return toast(`File nghe quá lớn (${formatBytes(file.size)}), tối đa ${formatBytes(MAX_AUDIO_BYTES)}.`);
+    setBusy(true);
+    try {
+      const res = await fetch(await getUploadUrl({ token }), { method: "POST", headers: { "Content-Type": type }, body: file });
+      if (!res.ok) throw new Error(String(res.status));
+      const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };
+      onChange({ storageId, name: file.name, url: URL.createObjectURL(file) });
+    } catch (e) {
+      toast(errMsg(e, "Tải file nghe chưa thành công, thử lại nhé."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (audio)
+    return (
+      <div className="audio-field">
+        {audio.url && <audio controls preload="metadata" src={audio.url} />}
+        <span className="tiny muted">🎧 {audio.name}</span>
+        <button className="link-btn danger" type="button" onClick={() => onChange(null)}>
+          Bỏ file nghe
+        </button>
+      </div>
+    );
+  return (
+    <label className="img-field add">
+      <input type="file" accept="audio/*,.mp3" hidden disabled={busy} onChange={(e) => pick(e.target.files?.[0])} />
+      <span className="btn btn-ghost btn-sm">{busy ? "Đang tải file nghe…" : "🎧 Thêm file MP3"}</span>
+      <span className="tiny muted">tối đa {formatBytes(MAX_AUDIO_BYTES)}</span>
     </label>
   );
 }

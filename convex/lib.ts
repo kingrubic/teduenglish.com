@@ -167,6 +167,7 @@ export async function publicSections(ctx: Ctx, quiz: Doc<"quizzes">) {
     quiz.sections.map(async (s) => ({
       title: s.title,
       listen: s.listen ?? null,
+      audio: s.audio ? { name: s.audio.name, url: await ctx.storage.getUrl(s.audio.storageId) } : null,
       passage: s.passage ?? null,
       questions: await Promise.all(
         s.questions.map(async (q) => {
@@ -184,11 +185,20 @@ export function quizImageIds(sections: Doc<"quizzes">["sections"]): Id<"_storage
   return sections.flatMap((s) => s.questions.flatMap((q) => (q.image ? [q.image.storageId] : [])));
 }
 
-/** Deletes question images no other quiz still uses (duplicated quizzes share images). */
-export async function releaseImages(ctx: MutationCtx, ids: Id<"_storage">[], exceptQuiz: Id<"quizzes">) {
+export function quizAudioIds(sections: Doc<"quizzes">["sections"]): Id<"_storage">[] {
+  return sections.flatMap((s) => (s.audio ? [s.audio.storageId] : []));
+}
+
+/** Every uploaded file a quiz uses: question images and listening audio. */
+export function quizFileIds(sections: Doc<"quizzes">["sections"]): Id<"_storage">[] {
+  return [...quizImageIds(sections), ...quizAudioIds(sections)];
+}
+
+/** Deletes quiz images/audio no other quiz still uses (duplicated quizzes share files). */
+export async function releaseFiles(ctx: MutationCtx, ids: Id<"_storage">[], exceptQuiz: Id<"quizzes">) {
   if (!ids.length) return;
   const inUse = new Set<string>();
-  for (const q of await ctx.db.query("quizzes").collect()) if (q._id !== exceptQuiz) quizImageIds(q.sections).forEach((id) => inUse.add(id));
+  for (const q of await ctx.db.query("quizzes").collect()) if (q._id !== exceptQuiz) quizFileIds(q.sections).forEach((id) => inUse.add(id));
   for (const id of new Set(ids)) if (!inUse.has(id)) await ctx.storage.delete(id);
 }
 
@@ -256,7 +266,7 @@ export async function studentResource(ctx: Ctx, r: Doc<"resources">) {
     description: r.description,
     url: r.url,
     term: r.term ?? null,
-    file: r.file ? { name: r.file.name, size: r.file.size, url: await ctx.storage.getUrl(r.file.storageId) } : null,
+    file: r.file ? { name: r.file.name, size: r.file.size, audio: r.file.media === "audio", url: await ctx.storage.getUrl(r.file.storageId) } : null,
   };
 }
 

@@ -14,6 +14,8 @@ export type Question = McqQuestion | FillQuestion | EssayQuestion;
 export type Section = {
   title: string;
   listen?: string;
+  /** Recorded MP3 for a listening part, kept in Convex storage. */
+  audio?: QuestionImage;
   passage?: string;
   questions: Question[];
 };
@@ -23,6 +25,7 @@ export type AnswerValue = string | number;
 export type Answers = Record<string, AnswerValue>;
 
 export const MAX_PDF_BYTES = 50 * 1024 * 1024;
+export const MAX_AUDIO_BYTES = 40 * 1024 * 1024;
 
 export function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;

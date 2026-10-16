@@ -8,6 +8,7 @@ const scriptSrc = isDev
 const csp = [
   "default-src 'self'",
   "img-src 'self' data: blob: https://*.convex.cloud",
+  "media-src 'self' blob: https://*.convex.cloud",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   scriptSrc,
   "font-src 'self' data: https://fonts.gstatic.com",

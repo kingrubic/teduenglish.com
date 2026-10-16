@@ -26,6 +26,8 @@ export const essayReviewValidator = v.object({
 export const sectionValidator = v.object({
   title: v.string(),
   listen: v.optional(v.string()),
+  // Recorded audio (MP3) for a listening part; played instead of the computer voice.
+  audio: v.optional(v.object({ storageId: v.id("_storage"), name: v.string() })),
   passage: v.optional(v.string()),
   questions: v.array(questionValidator),
 });
@@ -43,6 +45,7 @@ export const resourceKindValidator = v.union(
   v.literal("game"),
   v.literal("video"),
   v.literal("doc"),
+  v.literal("audio"),
 );
 
 export default defineSchema({
@@ -107,7 +110,8 @@ export default defineSchema({
     title: v.string(),
     description: v.string(),
     url: v.string(), // "" when the resource is an uploaded file
-    file: v.optional(v.object({ storageId: v.id("_storage"), name: v.string(), size: v.number() })),
+    // Uploaded PDF, or an audio lesson (MP3…) when media is "audio".
+    file: v.optional(v.object({ storageId: v.id("_storage"), name: v.string(), size: v.number(), media: v.optional(v.literal("audio")) })),
     hidden: v.optional(v.boolean()),
     term: termValidator,
     order: v.number(),

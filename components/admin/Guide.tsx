@@ -472,7 +472,7 @@ export default function Guide() {
                     </td>
                     <td>Listening, hội thoại</td>
                     <td>
-                      Chọn dạng phần “Nghe”, gõ lời thoại. Máy đọc bằng giọng tiếng Anh, mỗi nhân vật một giọng.
+                      Chọn dạng phần “Nghe”, rồi <b>🎧 Thêm file MP3</b> (bài nghe thầy cô có sẵn, tối đa 40 MB) hoặc gõ lời thoại để máy đọc bằng giọng tiếng Anh, mỗi nhân vật một giọng. Có file MP3 thì học sinh nghe file; lời thoại khi đó chỉ để em xem sau khi nộp.
                     </td>
                   </tr>
                   <tr>
@@ -564,7 +564,7 @@ export default function Guide() {
                       Vào <b>Tài liệu &amp; liên kết</b> → <span className="kbd">+ Thêm tài liệu</span>.
                     </>,
                     <>
-                      Chọn <b>Tải file PDF lên</b> (tối đa 50 MB) hoặc <b>Dán đường link</b>.
+                      Chọn <b>Tải file PDF lên</b> (tối đa 50 MB), <b>Tải file MP3 lên</b> (bài nghe, tối đa 40 MB; học sinh bấm ▶ nghe ngay trong danh sách) hoặc <b>Dán đường link</b>.
                     </>,
                     <>Chọn thư mục, đặt tên (tên file được điền sẵn), thêm mô tả nếu cần.</>,
                     <>
@@ -862,7 +862,7 @@ const FAQ: [string, React.ReactNode][] = [
   [
     "Phần nghe không phát được âm thanh?",
     <>
-      Âm thanh được đọc bằng giọng tiếng Anh có sẵn trên máy của em. Nhắc em: tăng âm lượng, tắt chế độ im lặng, dùng Chrome hoặc Safari bản mới. Điện thoại Android thiếu giọng tiếng
+      Bài có file MP3 thì phát như nhạc bình thường. Bài dùng lời thoại thì âm thanh được đọc bằng giọng tiếng Anh có sẵn trên máy của em. Nhắc em: tăng âm lượng, tắt chế độ im lặng, dùng Chrome hoặc Safari bản mới. Điện thoại Android thiếu giọng tiếng
       Anh thì cài thêm “Google Text-to-Speech” (Speech Services by Google) trên Play Store.
     </>,
   ],

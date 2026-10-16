@@ -12,8 +12,10 @@ import {
   getSettings,
   hashPassword,
   quizBySlug,
+  quizAudioIds,
+  quizFileIds,
   quizImageIds,
-  releaseImages,
+  releaseFiles,
   randomToken,
   requireAdmin,
   sha256,
@@ -21,7 +23,7 @@ import {
   verifyPassword,
 } from "./lib";
 import { accentValidator, essayReviewValidator, ieltsValidator, resourceKindValidator, sectionValidator, termValidator, timerValidator } from "./schema";
-import { MAX_PDF_BYTES, formatBytes, hasEssay, isCorrect, normCode, parentCodeFor, questionCount, slugify, validateSections, wordCount, writingBand } from "./model";
+import { MAX_AUDIO_BYTES, MAX_PDF_BYTES, formatBytes, hasEssay, isCorrect, normCode, parentCodeFor, questionCount, slugify, validateSections, wordCount, writingBand } from "./model";
 
 const tokenArg = { token: v.string() };
 
@@ -466,9 +468,9 @@ export const generateUploadUrl = mutation({
   },
 });
 
-function cleanFileName(name: string) {
+function cleanFileName(name: string, ext: RegExp = /\.pdf$/i, fallbackExt = ".pdf") {
   const base = name.split(/[\\/]/).pop()?.trim().replace(/[\u0000-\u001f"]/g, "").slice(0, 120) || "tai-lieu";
-  return /\.pdf$/i.test(base) ? base : `${base}.pdf`;
+  return ext.test(base) ? base : `${base}${fallbackExt}`;
 }
 
 export const saveResource = mutation({
@@ -479,7 +481,8 @@ export const saveResource = mutation({
     kind: resourceKindValidator,
     title: v.string(),
     description: v.string(),
-    source: v.union(v.literal("url"), v.literal("file")),
+    // "file" = PDF, "audio" = MP3 (or another audio format) lesson.
+    source: v.union(v.literal("url"), v.literal("file"), v.literal("audio")),
     url: v.string(),
     // A freshly uploaded file; omit to keep the current one.
     storageId: v.optional(v.id("_storage")),
@@ -503,14 +506,20 @@ export const saveResource = mutation({
     } else if (args.storageId) {
       const meta = await ctx.db.system.get(args.storageId);
       if (!meta) fail("File vừa tải lên không còn, vui lòng chọn lại file.");
-      const name = cleanFileName(args.fileName ?? "");
-      if (!(meta.contentType ?? "").includes("pdf")) fail("Chỉ nhận file PDF.");
-      if (meta.size > MAX_PDF_BYTES) fail(`File quá lớn (tối đa ${formatBytes(MAX_PDF_BYTES)}).`);
-      file = { storageId: args.storageId, name, size: meta.size };
-    } else if (prev?.file) {
+      if (args.source === "audio") {
+        if (!(meta.contentType ?? "").startsWith("audio/")) fail("Chỉ nhận file âm thanh (MP3, M4A, WAV…).");
+        if (meta.size > MAX_AUDIO_BYTES) fail(`File quá lớn (tối đa ${formatBytes(MAX_AUDIO_BYTES)}).`);
+        const name = cleanFileName(args.fileName ?? "", /\.(mp3|m4a|wav|ogg|aac|oga|webm)$/i, ".mp3");
+        file = { storageId: args.storageId, name, size: meta.size, media: "audio" };
+      } else {
+        if (!(meta.contentType ?? "").includes("pdf")) fail("Chỉ nhận file PDF.");
+        if (meta.size > MAX_PDF_BYTES) fail(`File quá lớn (tối đa ${formatBytes(MAX_PDF_BYTES)}).`);
+        file = { storageId: args.storageId, name: cleanFileName(args.fileName ?? ""), size: meta.size };
+      }
+    } else if (prev?.file && (prev.file.media === "audio") === (args.source === "audio")) {
       file = prev.file;
     } else {
-      fail("Chọn file PDF để tải lên.");
+      fail(args.source === "audio" ? "Chọn file MP3 để tải lên." : "Chọn file PDF để tải lên.");
     }
 
     const data = { folder: args.folder, kind: args.kind, title, description: args.description.trim(), url, ...(file ? { file } : {}), ...(args.hidden ? { hidden: true } : {}), ...(args.term ? { term: args.term } : {}) };
@@ -598,12 +607,12 @@ export const quiz = query({
     await requireAdmin(ctx, args.token);
     const q = await ctx.db.get(args.id);
     if (!q) return null;
-    const imageUrls: Record<string, string> = {};
-    for (const id of quizImageIds(q.sections)) {
+    const fileUrls: Record<string, string> = {};
+    for (const id of quizFileIds(q.sections)) {
       const url = await ctx.storage.getUrl(id);
-      if (url) imageUrls[id] = url;
+      if (url) fileUrls[id] = url;
     }
-    return { ...q, imageUrls };
+    return { ...q, fileUrls };
   },
 });
 
@@ -633,6 +642,7 @@ export const saveQuiz = mutation({
     const sections = args.sections.map((s) => ({
       title: s.title.trim() || "Câu hỏi",
       ...(s.listen?.trim() ? { listen: s.listen.trim() } : {}),
+      ...(s.audio ? { audio: { storageId: s.audio.storageId, name: s.audio.name.slice(0, 200) } } : {}),
       ...(s.passage?.trim() ? { passage: s.passage.trim() } : {}),
       questions: s.questions.map((q) => {
         const base = {
@@ -651,6 +661,11 @@ export const saveQuiz = mutation({
     for (const id of quizImageIds(sections)) {
       const meta = await ctx.db.system.get(id);
       if (!meta || !(meta.contentType ?? "").startsWith("image/")) fail("Có ảnh trong bài không hợp lệ hoặc đã bị xoá. Hãy chọn lại ảnh.");
+    }
+    for (const id of quizAudioIds(sections)) {
+      const meta = await ctx.db.system.get(id);
+      if (!meta || !(meta.contentType ?? "").startsWith("audio/")) fail("Có file nghe trong bài không hợp lệ hoặc đã bị xoá. Hãy chọn lại file MP3.");
+      if (meta.size > MAX_AUDIO_BYTES) fail(`File nghe quá lớn, tối đa ${formatBytes(MAX_AUDIO_BYTES)}.`);
     }
 
     const slug = slugify(args.slug || title);
@@ -678,8 +693,8 @@ export const saveQuiz = mutation({
       const prev = await ctx.db.get(id);
       if (!prev) fail("Không tìm thấy bài.");
       await ctx.db.replace(id, { ...data, order: prev.order });
-      const kept = new Set<string>(quizImageIds(sections));
-      await releaseImages(ctx, quizImageIds(prev.sections).filter((x) => !kept.has(x)), id);
+      const kept = new Set<string>(quizFileIds(sections));
+      await releaseFiles(ctx, quizFileIds(prev.sections).filter((x) => !kept.has(x)), id);
       return { id, slug };
     }
     const inFolder = await ctx.db.query("quizzes").withIndex("by_folder", (q) => q.eq("folder", args.folder)).collect();
@@ -713,7 +728,7 @@ export const deleteQuiz = mutation({
     const quiz = await ctx.db.get(args.id);
     if (!quiz) return;
     await ctx.db.delete(args.id);
-    await releaseImages(ctx, quizImageIds(quiz.sections), args.id);
+    await releaseFiles(ctx, quizFileIds(quiz.sections), args.id);
   },
 });
 

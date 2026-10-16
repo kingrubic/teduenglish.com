@@ -1,7 +1,7 @@
 import { cronJobs } from "convex/server";
 import { internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
-import { quizImageIds } from "./lib";
+import { quizFileIds } from "./lib";
 
 /** Removes expired sessions and login attempts older than a day. */
 export const cleanup = internalMutation({
@@ -16,7 +16,7 @@ export const cleanup = internalMutation({
     for (const s of oldParent) await ctx.db.delete(s._id);
     // Uploads that never got attached to a resource (form closed before saving).
     const used = new Set<string>((await ctx.db.query("resources").collect()).flatMap((r) => (r.file ? [r.file.storageId] : [])));
-    for (const q of await ctx.db.query("quizzes").collect()) quizImageIds(q.sections).forEach((id) => used.add(id));
+    for (const q of await ctx.db.query("quizzes").collect()) quizFileIds(q.sections).forEach((id) => used.add(id));
     for (const a of await ctx.db.query("clarifyAnswers").collect()) a.files.forEach((f) => used.add(f.storageId));
     const files = await ctx.db.system.query("_storage").collect();
     for (const f of files) if (!used.has(f._id) && f._creationTime < now - 24 * 60 * 60 * 1000) await ctx.storage.delete(f._id);

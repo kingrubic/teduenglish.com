@@ -153,7 +153,7 @@ function newAttempt(sections: PubSection[], mix: boolean): Attempt {
     submitted: false,
     startedAt: Date.now(),
     sections: sections.map((sec, si) => {
-      const keep = !mix || !!(sec.listen || sec.passage) || sec.questions.some((q) => q.type === "essay");
+      const keep = !mix || !!(sec.listen || sec.audio || sec.passage) || sec.questions.some((q) => q.type === "essay");
       const order = sec.questions.map((_, i) => i);
       const opts: Record<number, number[]> = {};
       sec.questions.forEach((q, qi) => {
@@ -438,6 +438,24 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
             </section>
           );
         }
+        if (sec.audio?.url) {
+          return (
+            <section className="q-section" key={sa.si}>
+              {title}
+              <div className="listen-box">
+                <SectionAudio url={sec.audio.url} onPlay={ttsStop} />
+                <p className="listen-status">Bấm ▶ để nghe. Em có thể tua lại và nghe nhiều lần.</p>
+                {att.submitted && sec.listen && (
+                  <details>
+                    <summary>Xem lời thoại (transcript)</summary>
+                    <div className="transcript">{sec.listen}</div>
+                  </details>
+                )}
+              </div>
+              {cards}
+            </section>
+          );
+        }
         if (sec.listen) {
           const active = tts.sec === sa.si && tts.playing;
           return (
@@ -581,6 +599,46 @@ function QuizRunner({ meta, sections: liveSections, preview }: { meta: Meta; sec
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Teacher-uploaded recording for a listening part, with a speed switch. */
+function SectionAudio({ url, onPlay }: { url: string; onPlay: () => void }) {
+  const ref = useRef<HTMLAudioElement>(null);
+  const [rate, setRate] = useState(1);
+  return (
+    <div className="listen-controls">
+      <audio
+        ref={ref}
+        className="section-audio"
+        controls
+        preload="metadata"
+        controlsList="nodownload noplaybackrate"
+        src={url}
+        onPlay={(e) => {
+          onPlay(); // stop the computer voice
+          document.querySelectorAll("audio").forEach((a) => a !== e.currentTarget && a.pause()); // one recording at a time
+        }}
+      />
+      <span className="speed" role="group" aria-label="Tốc độ nghe">
+        {[
+          [0.75, "Chậm"],
+          [1, "Chuẩn"],
+        ].map(([r, label]) => (
+          <button
+            key={label}
+            type="button"
+            aria-pressed={rate === r}
+            onClick={() => {
+              setRate(r as number);
+              if (ref.current) ref.current.playbackRate = r as number;
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </span>
     </div>
   );
 }

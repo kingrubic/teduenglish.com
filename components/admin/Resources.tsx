@@ -5,7 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { useMemo, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import { KIND } from "@/components/site/parts";
-import { MAX_PDF_BYTES, formatBytes } from "@/convex/model";
+import { MAX_AUDIO_BYTES, MAX_PDF_BYTES, formatBytes } from "@/convex/model";
 import type { Id } from "@/convex/_generated/dataModel";
 import { errMsg, safeUrl } from "@/lib/ui";
 import { Modal, useAdmin, useRun } from "./AdminShell";
@@ -34,7 +34,7 @@ export default function Resources() {
         <div>
           <p className="eyebrow">Mở trong tab mới</p>
           <h2>Tài liệu &amp; liên kết</h2>
-          <p className="small muted">File PDF tải lên (học sinh xem ngay trên web hoặc tải về) và link Quizlet, Wordwall, Google Drive, YouTube…</p>
+          <p className="small muted">File PDF (học sinh xem ngay trên web hoặc tải về), bài nghe MP3 (nghe ngay trong danh sách) và link Quizlet, Wordwall, Google Drive, YouTube…</p>
         </div>
         <div className="actions">
           <button className="btn btn-primary btn-sm" type="button" onClick={() => setEditing("new")} disabled={!folders?.length}>
@@ -94,7 +94,7 @@ export default function Resources() {
                       {r.description && <span className="sub">{r.description}</span>}
                       {r.file ? (
                         <span className="sub">
-                          📄 {r.file.name} · {formatBytes(r.file.size)}
+                          {r.file.media === "audio" ? "🎧" : "📄"} {r.file.name} · {formatBytes(r.file.size)}
                         </span>
                       ) : (
                         <span className="sub mono" style={{ overflowWrap: "anywhere" }}>
@@ -105,7 +105,7 @@ export default function Resources() {
                     <td>{folderName.get(r.folder) ?? r.folder}</td>
                     <td>
                       <span className="tag">{KIND[r.kind]}</span>
-                      {r.file && <span className="tag">PDF</span>}
+                      {r.file && <span className="tag">{r.file.media === "audio" ? "MP3" : "PDF"}</span>}
                       {r.term && <span className="tag">{r.term === "hk1" ? "HK1" : "HK2"}</span>}
                       {r.hidden ? <span className="status draft">Đang ẩn</span> : <span className="status on">Đang hiện</span>}
                     </td>
@@ -125,7 +125,7 @@ export default function Resources() {
                           className="link-btn danger"
                           type="button"
                           onClick={() => {
-                            if (confirm(`Xóa "${r.title}"?${r.file ? " File PDF cũng sẽ bị xóa." : ""}`)) run(() => del({ token, id: r._id }), "Đã xóa tài liệu.");
+                            if (confirm(`Xóa "${r.title}"?${r.file ? (r.file.media === "audio" ? " File nghe cũng sẽ bị xóa." : " File PDF cũng sẽ bị xóa.") : ""}`)) run(() => del({ token, id: r._id }), "Đã xóa tài liệu.");
                           }}
                         >
                           Xóa
@@ -145,11 +145,11 @@ export default function Resources() {
 }
 
 /** Uploads straight to Convex storage, reporting progress. */
-function uploadPdf(uploadUrl: string, file: File, onProgress: (pct: number) => void): Promise<Id<"_storage">> {
+function uploadFile(uploadUrl: string, file: File, contentType: string, onProgress: (pct: number) => void): Promise<Id<"_storage">> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", uploadUrl);
-    xhr.setRequestHeader("Content-Type", "application/pdf");
+    xhr.setRequestHeader("Content-Type", contentType);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(Math.round((e.loaded / e.total) * 100));
     xhr.onload = () => {
       try {
@@ -178,7 +178,8 @@ function ResourceForm({
   const { token, toast } = useAdmin();
   const save = useMutation(api.admin.saveResource);
   const getUploadUrl = useMutation(api.admin.generateUploadUrl);
-  const [source, setSource] = useState<"url" | "file">(res ? (res.file ? "file" : "url") : "file");
+  type Source = "file" | "audio" | "url";
+  const [source, setSourceState] = useState<Source>(res ? (res.file ? (res.file.media === "audio" ? "audio" : "file") : "url") : "file");
   const [folder, setFolder] = useState(res?.folder ?? (defaultFolder || folders[0]?.slug || ""));
   const [kind, setKind] = useState<Kind>(res?.kind ?? "doc");
   const [title, setTitle] = useState(res?.title ?? "");
@@ -189,25 +190,46 @@ function ResourceForm({
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [err, setErr] = useState("");
+  const audio = source === "audio";
+  // The file this resource already has, if it matches the chosen source.
+  const current = res?.file && (res.file.media === "audio") === audio && source !== "url" ? res.file : null;
+
+  function setSource(s: Source) {
+    setSourceState(s);
+    setFile(null);
+    setErr("");
+    if (s === "audio" && kind === "doc") setKind("audio");
+    if (s !== "audio" && kind === "audio") setKind("doc");
+  }
+
+  function fileType(f: File) {
+    if (!audio) return "application/pdf";
+    return f.type.startsWith("audio/") ? f.type : /\.mp3$/i.test(f.name) ? "audio/mpeg" : /\.m4a$/i.test(f.name) ? "audio/mp4" : /\.wav$/i.test(f.name) ? "audio/wav" : "";
+  }
 
   function pick(f: File | null) {
     setErr("");
     if (!f) return setFile(null);
-    if (f.type !== "application/pdf" && !/\.pdf$/i.test(f.name)) return setErr("Chỉ nhận file PDF.");
-    if (f.size > MAX_PDF_BYTES) return setErr(`File quá lớn (${formatBytes(f.size)}). Tối đa ${formatBytes(MAX_PDF_BYTES)}.`);
+    if (audio) {
+      if (!fileType(f)) return setErr("Chỉ nhận file âm thanh (MP3, M4A, WAV…).");
+      if (f.size > MAX_AUDIO_BYTES) return setErr(`File quá lớn (${formatBytes(f.size)}). Tối đa ${formatBytes(MAX_AUDIO_BYTES)}.`);
+    } else {
+      if (f.type !== "application/pdf" && !/\.pdf$/i.test(f.name)) return setErr("Chỉ nhận file PDF.");
+      if (f.size > MAX_PDF_BYTES) return setErr(`File quá lớn (${formatBytes(f.size)}). Tối đa ${formatBytes(MAX_PDF_BYTES)}.`);
+    }
     setFile(f);
-    if (!title.trim()) setTitle(f.name.replace(/\.pdf$/i, "").replace(/[_-]+/g, " ").trim());
+    if (!title.trim()) setTitle(f.name.replace(/\.[a-z0-9]{2,4}$/i, "").replace(/[_-]+/g, " ").trim());
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (progress !== null) return;
-    if (source === "file" && !file && !res?.file) return setErr("Chọn file PDF để tải lên.");
+    if (source !== "url" && !file && !current) return setErr(audio ? "Chọn file MP3 để tải lên." : "Chọn file PDF để tải lên.");
     try {
       let storageId: Id<"_storage"> | undefined;
-      if (source === "file" && file) {
+      if (source !== "url" && file) {
         setProgress(0);
-        storageId = await uploadPdf(await getUploadUrl({ token }), file, setProgress);
+        storageId = await uploadFile(await getUploadUrl({ token }), file, fileType(file), setProgress);
       }
       await save({ token, id: res?._id, folder, kind, title, description, source, url, storageId, fileName: file?.name, hidden, term: term || undefined });
       toast(res ? "Đã lưu tài liệu." : "Đã thêm tài liệu.");
@@ -226,6 +248,10 @@ function ResourceForm({
           <label className="check">
             <input type="radio" name="source" checked={source === "file"} onChange={() => setSource("file")} />
             Tải file PDF lên
+          </label>
+          <label className="check">
+            <input type="radio" name="source" checked={source === "audio"} onChange={() => setSource("audio")} />
+            Tải file MP3 lên
           </label>
           <label className="check">
             <input type="radio" name="source" checked={source === "url"} onChange={() => setSource("url")} />
@@ -250,20 +276,29 @@ function ResourceForm({
               <option value="exercise">Bài tập</option>
               <option value="game">Trò chơi</option>
               <option value="video">Video</option>
+              <option value="audio">Bài nghe</option>
             </select>
           </div>
         </div>
-        {source === "file" ? (
+        {source !== "url" ? (
           <div className="field">
             <label htmlFor="r-file">
-              File PDF <span className="hint">(tối đa {formatBytes(MAX_PDF_BYTES)})</span>
+              {audio ? "File nghe MP3" : "File PDF"} <span className="hint">(tối đa {formatBytes(audio ? MAX_AUDIO_BYTES : MAX_PDF_BYTES)})</span>
             </label>
-            <input className="input" id="r-file" type="file" accept="application/pdf,.pdf" onChange={(e) => pick(e.target.files?.[0] ?? null)} />
-            {res?.file && !file && (
+            <input
+              key={source}
+              className="input"
+              id="r-file"
+              type="file"
+              accept={audio ? "audio/*,.mp3,.m4a,.wav" : "application/pdf,.pdf"}
+              onChange={(e) => pick(e.target.files?.[0] ?? null)}
+            />
+            {current && !file && (
               <span className="tiny muted">
-                Đang dùng: <b>{res.file.name}</b> · {formatBytes(res.file.size)}. Chọn file khác nếu muốn thay.
+                Đang dùng: <b>{current.name}</b> · {formatBytes(current.size)}. Chọn file khác nếu muốn thay.
               </span>
             )}
+            {audio && current && !file && res?.fileUrl && <audio className="section-audio" controls preload="none" src={res.fileUrl} />}
             {file && (
               <span className="tiny muted">
                 Sẽ tải lên: <b>{file.name}</b> · {formatBytes(file.size)}

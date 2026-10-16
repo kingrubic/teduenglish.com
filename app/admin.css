@@ -127,6 +127,9 @@ td .sub { display: block; font-size: 0.78rem; color: var(--muted); }
 .img-field { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .img-field img { max-height: 120px; max-width: 220px; border-radius: 10px; border: 1px solid var(--line); background: #fff; }
 .img-field.add { cursor: pointer; }
+.img-field.add .btn { pointer-events: none; }
+.audio-field { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.audio-field audio { height: 40px; max-width: 100%; }
 
 .essay-review { border: 1px solid var(--line-strong); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
 .criteria-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; }
