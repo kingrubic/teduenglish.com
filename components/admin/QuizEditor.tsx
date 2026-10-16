@@ -10,6 +10,7 @@ import { MAX_AUDIO_BYTES, formatBytes, slugify, validateSections, type Section }
 import { parseLoose } from "@/lib/loose-json";
 import { errMsg } from "@/lib/ui";
 import { Modal, useAdmin } from "./AdminShell";
+import RichInput from "./RichInput";
 
 /* ---------- editor state ---------- */
 let uidSeq = 0;
@@ -544,16 +545,17 @@ export default function QuizEditor({ id }: { id: string }) {
               </div>
               <div className="row-2" style={{ gridTemplateColumns: "minmax(0,3fr) minmax(0,1fr)" }}>
                 <div className="field">
-                  <label htmlFor={`q-${q.uid}`}>
-                    Câu hỏi <span className="hint">— dùng ___ cho chỗ trống, [u]chữ[/u] để gạch chân, [b]chữ[/b] in đậm</span>
-                  </label>
-                  <textarea
-                    className="textarea prose compact"
+                  <span className="label-like">
+                    Câu hỏi <span className="hint">— bôi đen chữ rồi bấm B (in đậm) hoặc U (gạch chân)</span>
+                  </span>
+                  <RichInput
                     id={`q-${q.uid}`}
-                    rows={q.type === "essay" ? 5 : 2}
-                    style={{ minHeight: 0 }}
+                    label={`Câu hỏi ${qi + 1}`}
+                    rows={q.type === "essay" || q.type === "speak" ? 4 : 2}
                     value={q.q}
-                    onChange={(e) => setQuestion(si, qi, { q: e.target.value })}
+                    onChange={(v) => setQuestion(si, qi, { q: v })}
+                    placeholder={q.type === "speak" ? "Câu hỏi máy sẽ đọc to, ví dụ: Where is your hometown?" : "Ví dụ: She ___ to school every day."}
+                    blank={q.type === "mcq" || q.type === "fill"}
                   />
                 </div>
                 <div className="field">
@@ -612,10 +614,10 @@ export default function QuizEditor({ id }: { id: string }) {
                     />
                   </div>
                   <div className="field">
-                    <label htmlFor={`ex-${q.uid}`}>
+                    <span className="label-like">
                       Gợi ý cho học sinh <span className="hint">(hiện cùng đề, ví dụ dàn ý)</span>
-                    </label>
-                    <input className="input compact" id={`ex-${q.uid}`} value={q.explain} onChange={(e) => setQuestion(si, qi, { explain: e.target.value })} />
+                    </span>
+                    <RichInput id={`ex-${q.uid}`} label="Gợi ý cho học sinh" multiline={false} blank={false} value={q.explain} onChange={(v) => setQuestion(si, qi, { explain: v })} />
                   </div>
                 </div>
               ) : q.type === "mcq" ? (
@@ -625,11 +627,12 @@ export default function QuizEditor({ id }: { id: string }) {
                     <div className="opt-edit" key={oi}>
                       <input type="radio" name={`ans-${q.uid}`} checked={q.answer === oi} onChange={() => setQuestion(si, qi, { answer: oi })} aria-label={`Đáp án đúng là ${String.fromCharCode(65 + oi)}`} />
                       <span className="letter">{String.fromCharCode(65 + oi)}</span>
-                      <input
-                        className="input compact"
+                      <RichInput
+                        label={`Lựa chọn ${String.fromCharCode(65 + oi)}`}
+                        multiline={false}
+                        blank={false}
                         value={o}
-                        onChange={(e) => setQuestion(si, qi, { options: q.options.map((x, i) => (i === oi ? e.target.value : x)) })}
-                        aria-label={`Lựa chọn ${String.fromCharCode(65 + oi)}`}
+                        onChange={(v) => setQuestion(si, qi, { options: q.options.map((x, i) => (i === oi ? v : x)) })}
                       />
                       <button
                         className="link-btn danger"
@@ -666,12 +669,12 @@ export default function QuizEditor({ id }: { id: string }) {
                   <textarea className="textarea compact" id={`fa-${q.uid}`} rows={2} style={{ minHeight: 0 }} value={q.answerText} onChange={(e) => setQuestion(si, qi, { answerText: e.target.value })} />
                 </div>
               )}
-              {q.type !== "essay" && (
+              {(q.type === "mcq" || q.type === "fill") && (
                 <div className="field">
-                  <label htmlFor={`ex-${q.uid}`}>
-                    Giải thích <span className="hint">(hiện sau khi nộp)</span>
-                  </label>
-                  <input className="input compact" id={`ex-${q.uid}`} value={q.explain} onChange={(e) => setQuestion(si, qi, { explain: e.target.value })} />
+                  <span className="label-like">
+                    Giải thích <span className="hint">(hiện sau khi nộp, chỉ ở câu em đã làm)</span>
+                  </span>
+                  <RichInput id={`ex-${q.uid}`} label="Giải thích" multiline={false} blank={false} value={q.explain} onChange={(v) => setQuestion(si, qi, { explain: v })} />
                 </div>
               )}
             </div>

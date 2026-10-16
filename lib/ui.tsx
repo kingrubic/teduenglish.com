@@ -81,7 +81,7 @@ export function copyText(text: string, onOk: () => void, onFail: () => void) {
   }
 }
 
-/** Renders [u]..[/u] as underline and [b]..[/b] as bold, everything else as plain text. */
+/** Renders [u]..[/u] as underline and [b]..[/b] as bold (nesting allowed), everything else as plain text. */
 export function Rich({ text }: { text: string }) {
   const parts: ReactNode[] = [];
   const re = /\[(u|b)\]([\s\S]+?)\[\/\1\]/g;
@@ -90,7 +90,8 @@ export function Rich({ text }: { text: string }) {
   let k = 0;
   while ((m = re.exec(text))) {
     if (m.index > last) parts.push(<Fragment key={k++}>{text.slice(last, m.index)}</Fragment>);
-    parts.push(m[1] === "u" ? <u key={k++}>{m[2]}</u> : <strong key={k++}>{m[2]}</strong>);
+    const inner = <Rich text={m[2]} />;
+    parts.push(m[1] === "u" ? <u key={k++}>{inner}</u> : <strong key={k++}>{inner}</strong>);
     last = m.index + m[0].length;
   }
   if (last < text.length) parts.push(<Fragment key={k++}>{text.slice(last)}</Fragment>);

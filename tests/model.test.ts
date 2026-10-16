@@ -207,6 +207,16 @@ describe("statistics", () => {
     expect(validateSections(mixed).join()).toMatch(/chỉ gồm câu hỏi dạng/);
   });
 
+  it("converts formatted text to stored markup and back", async () => {
+    const { runsToMarkup, markupToHtml, plainText } = await import("@/lib/rich");
+    const r = (text: string, b = false, u = false) => ({ text, b, u });
+    expect(runsToMarkup([r("want"), r("ed", false, true), r(" · "), r("watch", true), r("ed", true, true)])).toBe("want[u]ed[/u] · [b]watch[/b][b][u]ed[/u][/b]");
+    expect(runsToMarkup([r("I "), r("really ", true), r("like it")])).toBe("I [b]really[/b] like it");
+    expect(runsToMarkup([r("Line 1", true), r("\n"), r("Line 2", true)])).toBe("[b]Line 1\nLine 2[/b]");
+    expect(markupToHtml("a < [b]b[/b]\n[u]c[/u]")).toBe("a &lt; <b>b</b><br><u>c</u>");
+    expect(plainText("want[u]ed[/u] [b]x[/b]")).toBe("wanted x");
+  });
+
   it("derives the parent code from the student code", async () => {
     const { parentCodeFor } = await import("@/convex/model");
     expect(parentCodeFor("thanhtoan3580")).toBe("thanhtoanph3580");

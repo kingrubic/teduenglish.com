@@ -5,6 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
+import { plainText } from "@/lib/rich";
 import { Rich, errMsg } from "@/lib/ui";
 import { useSite } from "./SiteShell";
 
@@ -37,7 +38,7 @@ function clock(sec: number) {
 
 /** Plain text for the voice: drops Markdown-ish marks and bullet symbols. */
 function speakable(text: string) {
-  return text.replace(/[*_#>`]/g, "").replace(/^[•\-–]\s*/gm, "").replace(/\s+/g, " ").trim();
+  return plainText(text).replace(/[*_#>`]/g, "").replace(/^[•\-–]\s*/gm, "").replace(/\s+/g, " ").trim();
 }
 
 /**

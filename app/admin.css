@@ -155,3 +155,34 @@ button.check { background: var(--surface); }
 .bar.low i { background: var(--bad); }
 .rank-table tr.top td { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
 .rank-table th .sub { font-weight: 600; }
+
+/* Rich text box: shows bold/underline as students will see them, with a small toolbar. */
+.rich-input { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1 1 auto; }
+.rich-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+.rich-tools button {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink);
+  border-radius: 8px; padding: 4px 9px; font-size: 0.78rem; cursor: pointer; line-height: 1.3;
+}
+.rich-tools button b, .rich-tools button u { font-size: 0.92rem; }
+.rich-tools button span { color: var(--muted); }
+.rich-tools button.on { background: var(--accent-soft); border-color: var(--accent); }
+.rich-tools button.on span { color: var(--accent-ink); }
+.rich-tools button:hover { border-color: var(--accent); }
+.rich-area {
+  width: 100%; min-width: 0;
+  background: var(--surface); color: var(--ink);
+  border: 1.5px solid var(--line-strong); border-radius: 11px;
+  padding: 9px 12px; font-size: 0.95rem; line-height: 1.6;
+  white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
+}
+.rich-area:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px var(--focus); }
+.rich-area:empty::before { content: attr(data-placeholder); color: var(--muted); opacity: .8; pointer-events: none; }
+.rich-area u { text-decoration-thickness: 2px; text-underline-offset: 3px; text-decoration-color: var(--accent); }
+.rich-area.single { white-space: nowrap; overflow-x: auto; overflow-y: hidden; }
+/* One-line boxes (answer options, explanations) show their toolbar only while typing. */
+.rich-input:has(.rich-area.single) .rich-tools { display: none; }
+.rich-input.focused:has(.rich-area.single) .rich-tools { display: flex; }
+.rich-input:has(.rich-area.single) .rich-tools button span { display: none; }
+.rich-input:has(.rich-area.single) .rich-tools button span.clear { display: inline; }
+.opt-edit .rich-input { flex: 1 1 auto; }

@@ -6,6 +6,7 @@ import { parseDialogue, parseStudentLines } from "@/convex/model";
 import { Rich, sget, sset } from "@/lib/ui";
 import { Swoosh } from "@/components/site/parts";
 import { useAdmin } from "./AdminShell";
+import RichInput from "./RichInput";
 
 /* ---------- small building blocks ---------- */
 
@@ -960,10 +961,10 @@ function FormatPlayground() {
     <div className="g-play">
       <p className="eyebrow">Thử ngay: định dạng chữ trong câu hỏi</p>
       <p className="small">
-        Gõ <span className="g-code">[u]chữ[/u]</span> để <u>gạch chân</u> (câu phát âm), <span className="g-code">[b]chữ[/b]</span> để <b>in đậm</b>, <span className="g-code">___</span> cho chỗ
-        trống.
+        <b>Bôi đen</b> chữ cần làm nổi bật rồi bấm nút <b>B</b> để <b>in đậm</b> hoặc <b>U</b> để <u>gạch chân</u> (câu phát âm). Bấm <b>___</b> để chèn chỗ trống. Dán chữ từ Word cũng giữ
+        được in đậm và gạch chân.
       </p>
-      <input className="input compact" value={text} onChange={(e) => setText(e.target.value)} aria-label="Câu hỏi thử" />
+      <RichInput label="Câu hỏi thử" value={text} onChange={setText} />
       <div className="g-preview" aria-live="polite">
         <span className="tiny muted" style={{ display: "block", fontWeight: 700 }}>
           Học sinh sẽ thấy:
