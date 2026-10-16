@@ -257,6 +257,7 @@ main { flex: 1; outline: none; }
 .alert { padding: 12px 14px; border-radius: 12px; font-size: 0.9rem; font-weight: 500; }
 .alert-bad { background: var(--bad-bg); color: var(--bad); border: 1px solid var(--bad-line); }
 .alert-good { background: var(--good-bg); color: var(--good); border: 1px solid var(--good-line); }
+.alert-warn { background: var(--accent-soft); color: var(--accent-ink); border: 1px solid var(--accent); }
 
 /* ---------- Home hero (cover + page) ---------- */
 .hero {

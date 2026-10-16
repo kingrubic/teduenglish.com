@@ -471,7 +471,15 @@ function SpeakingReview({ attempt, onDone }: { attempt: Detail; onDone: () => vo
         <p className="eyebrow">
           Bài nói · {answered}/{sp.items.length} câu có ghi âm
         </p>
-        {sp.purged && <p className="small muted">Ghi âm đã tự xoá sau {RECORDING_KEEP_DAYS} ngày; điểm và nhận xét vẫn còn.</p>}
+        {sp.purged ? (
+          <p className="small muted">Ghi âm đã tự xoá sau {RECORDING_KEEP_DAYS} ngày; điểm và nhận xét vẫn còn.</p>
+        ) : (
+          answered > 0 && (
+            <p className="alert alert-warn">
+              ⏳ Ghi âm tự xoá từ {stamp(attempt.submittedAt + RECORDING_KEEP_DAYS * 24 * 60 * 60 * 1000)} ({RECORDING_KEEP_DAYS} ngày sau khi nộp). Thầy cô nhớ chấm trước thời điểm này.
+            </p>
+          )
+        )}
         <div className="speak-replay">
           {sp.items.map((it) => (
             <div key={it.key} className="speak-replay-row">
