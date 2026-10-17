@@ -186,3 +186,4 @@ button.check { background: var(--surface); }
 .rich-input:has(.rich-area.single) .rich-tools button span { display: none; }
 .rich-input:has(.rich-area.single) .rich-tools button span.clear { display: inline; }
 .opt-edit .rich-input { flex: 1 1 auto; }
+.speak-download { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

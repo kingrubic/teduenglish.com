@@ -8,6 +8,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { RECORDING_KEEP_DAYS, SPEAKING_CRITERIA, SPEAKING_REVIEW_KEY, WRITING_CRITERIA, writingBand } from "@/convex/model";
 import { downloadXlsx } from "@/lib/excel";
+import { answerBaseName, attemptBaseName, audioExt, fileSlug, questionList } from "@/lib/speaking-files";
 import { Rich, errMsg, stamp } from "@/lib/ui";
 import { Modal, useAdmin, useRun } from "./AdminShell";
 
@@ -444,6 +445,55 @@ function SpeakingReview({ attempt, onDone }: { attempt: Detail; onDone: () => vo
   const [busy, setBusy] = useState(false);
   const overall = criteria.every((c) => c !== "") ? writingBand(criteria.map(Number)) : null;
   const answered = sp.items.filter((i) => i.url).length;
+  const [zipping, setZipping] = useState<{ done: number; total: number } | null>(null);
+  const base = attemptBaseName(attempt);
+
+  /** All recordings in one .zip, named by question, with the question list alongside. */
+  async function downloadAll() {
+    const items = sp.items.filter((i) => i.url);
+    setZipping({ done: 0, total: items.length });
+    try {
+      const { zipSync, strToU8 } = await import("fflate");
+      const files: Record<string, [Uint8Array, { level: 0 }]> = {};
+      const names = new Map<string, string>();
+      let done = 0;
+      await Promise.all(
+        items.map(async (it) => {
+          const res = await fetch(it.url!);
+          if (!res.ok) throw new Error(String(res.status));
+          const blob = await res.blob();
+          const name = answerBaseName(it) + audioExt(blob.type);
+          files[name] = [new Uint8Array(await blob.arrayBuffer()), { level: 0 }]; // audio is already compressed
+          names.set(it.key, name);
+          setZipping({ done: ++done, total: items.length });
+        }),
+      );
+      const list = questionList(
+        attempt,
+        sp.items.map((it) => ({ it, file: names.get(it.key) ?? null })),
+      );
+      // Question order inside the zip, whatever order the downloads finished in.
+      const ordered = Object.fromEntries(Object.keys(files).sort().map((n) => [n, files[n]]));
+      const zip = zipSync({ [base]: { "00_Danh-sach-cau-hoi.txt": strToU8("\ufeff" + list), ...ordered } });
+      saveBlob(new Blob([zip as BlobPart], { type: "application/zip" }), `${base}.zip`);
+      toast(`Đã tải ${items.length} câu trả lời của ${attempt.studentName}.`);
+    } catch (e) {
+      toast(errMsg(e, "Chưa tải được bài nói. Kiểm tra mạng rồi thử lại."));
+    } finally {
+      setZipping(null);
+    }
+  }
+
+  async function downloadOne(it: (typeof sp.items)[number]) {
+    try {
+      const res = await fetch(it.url!);
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      saveBlob(blob, `${fileSlug(attempt.studentName, 30)}_${answerBaseName(it)}${audioExt(blob.type)}`);
+    } catch (e) {
+      toast(errMsg(e, "Chưa tải được câu này, thử lại nhé."));
+    }
+  }
 
   async function submit() {
     if (criteria.some((c) => c === "") && criteria.some((c) => c !== "")) return setErr("Chấm đủ 4 tiêu chí, hoặc để trống cả 4 nếu chỉ nhận xét.");
@@ -481,11 +531,26 @@ function SpeakingReview({ attempt, onDone }: { attempt: Detail; onDone: () => vo
             </p>
           )
         )}
+        {answered > 0 && (
+          <div className="speak-download">
+            <button className="btn btn-primary btn-sm" type="button" onClick={downloadAll} disabled={!!zipping}>
+              {zipping ? `Đang tải ${zipping.done}/${zipping.total} câu…` : `⬇️ Tải toàn bộ bài nói (${answered} câu, file .zip)`}
+            </button>
+            <span className="tiny muted">
+              Tên file theo thứ tự câu, ví dụ <code>Cau01_Part1_….webm</code>, kèm danh sách câu hỏi. Mở bằng Chrome hoặc VLC nếu máy không phát được.
+            </span>
+          </div>
+        )}
         <div className="speak-replay">
           {sp.items.map((it) => (
             <div key={it.key} className="speak-replay-row">
               <span className="small">
                 <b>Câu {it.num}.</b> {it.q.split("\n")[0]} <span className="tiny muted">· {it.section} · {it.answerSec}s</span>
+                {it.url && (
+                  <button className="link-btn" type="button" onClick={() => downloadOne(it)} style={{ marginLeft: 8 }}>
+                    ⬇️ Tải câu này
+                  </button>
+                )}
               </span>
               {it.url ? <audio controls preload="none" src={it.url} /> : <span className="tiny muted">{sp.purged ? "(đã xoá)" : "(không có ghi âm)"}</span>}
             </div>
@@ -536,6 +601,17 @@ function SpeakingReview({ attempt, onDone }: { attempt: Detail; onDone: () => vo
       </div>
     </div>
   );
+}
+
+function saveBlob(blob: Blob, name: string) {
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 5000);
 }
 
 function fmtDuration(sec: number) {

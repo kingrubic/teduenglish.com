@@ -217,6 +217,23 @@ describe("statistics", () => {
     expect(plainText("want[u]ed[/u] [b]x[/b]")).toBe("wanted x");
   });
 
+  it("names downloaded Speaking answers clearly", async () => {
+    const { answerBaseName, attemptBaseName, audioExt, fileSlug } = await import("@/lib/speaking-files");
+    expect(answerBaseName({ num: 1, section: "Part 1 — Introduction and interview", q: "Do you use a digital device soon after waking up?", answerSec: 30 })).toBe(
+      "Cau01_Part1_Do-you-use-a-digital-device-soon-after",
+    );
+    expect(answerBaseName({ num: 7, section: "Part 2 — Individual long turn", q: "Describe a time when you learned.\nYou should say:", answerSec: 120 })).toBe(
+      "Cau07_Part2_Describe-a-time-when-you-learned",
+    );
+    const at = new Date(2026, 9, 17, 6, 28).getTime();
+    expect(attemptBaseName({ studentName: "Đan Minh Triết", className: "10A1", quizTitle: "IELTS Speaking · Technology & Daily Routines", submittedAt: at })).toBe(
+      "BaiNoi_Dan-Minh-Triet_10A1_IELTS-Speaking-Technology-Daily-Routines_2026-10-17",
+    );
+    expect(audioExt("audio/webm;codecs=opus")).toBe(".webm");
+    expect(audioExt("audio/mp4")).toBe(".m4a");
+    expect(fileSlug("  ?? ")).toBe("");
+  });
+
   it("derives the parent code from the student code", async () => {
     const { parentCodeFor } = await import("@/convex/model");
     expect(parentCodeFor("thanhtoan3580")).toBe("thanhtoanph3580");
