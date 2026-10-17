@@ -2,7 +2,7 @@ import { noMarks } from "@/convex/model";
 
 /*
  * Clear names for downloaded Speaking answers, so a teacher can mark from the files alone:
- *   BaiNoi_Dan-Minh-Triet_10A1_IELTS-Speaking-Technology_2026-10-17.zip
+ *   BaiNoi_Tran-Bao-An_10A1_IELTS-Speaking-Technology_2026-10-17.zip
  *     00_Danh-sach-cau-hoi.txt
  *     Cau01_Part1_Do-you-use-a-digital-device-soon-after.webm
  */
@@ -47,7 +47,7 @@ export function answerBaseName(it: SpeakingItem, width = 2): string {
   return `Cau${String(it.num).padStart(width, "0")}_${partTag(it.section)}_${fileSlug(firstLine, 40)}`;
 }
 
-/** Folder / zip name: "BaiNoi_Dan-Minh-Triet_10A1_IELTS-Speaking-Technology_2026-10-17". */
+/** Folder / zip name: "BaiNoi_Tran-Bao-An_10A1_IELTS-Speaking-Technology_2026-10-17". */
 export function attemptBaseName(a: SpeakingAttempt): string {
   return ["BaiNoi", fileSlug(a.studentName, 30), fileSlug(a.className, 20), fileSlug(a.quizTitle, 40), day(a.submittedAt)].filter(Boolean).join("_");
 }

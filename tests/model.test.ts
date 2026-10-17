@@ -226,8 +226,8 @@ describe("statistics", () => {
       "Cau07_Part2_Describe-a-time-when-you-learned",
     );
     const at = new Date(2026, 9, 17, 6, 28).getTime();
-    expect(attemptBaseName({ studentName: "Đan Minh Triết", className: "10A1", quizTitle: "IELTS Speaking · Technology & Daily Routines", submittedAt: at })).toBe(
-      "BaiNoi_Dan-Minh-Triet_10A1_IELTS-Speaking-Technology-Daily-Routines_2026-10-17",
+    expect(attemptBaseName({ studentName: "Trần Bảo An", className: "10A1", quizTitle: "IELTS Speaking · Technology & Daily Routines", submittedAt: at })).toBe(
+      "BaiNoi_Tran-Bao-An_10A1_IELTS-Speaking-Technology-Daily-Routines_2026-10-17",
     );
     expect(audioExt("audio/webm;codecs=opus")).toBe(".webm");
     expect(audioExt("audio/mp4")).toBe(".m4a");
