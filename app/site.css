@@ -802,3 +802,17 @@ td code, .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospac
 .guard-icon { font-size: 2.6rem; line-height: 1; margin: 0; }
 .guard-count { font-family: var(--font-display); font-size: 4rem; font-weight: 800; line-height: 1; color: var(--bad); font-variant-numeric: tabular-nums; margin: 0; }
 .guard-locked h2 { color: var(--bad); }
+
+/* ---------- Unfinished tests ---------- */
+.resume-list { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+.resume-card {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 14px 16px; border-radius: 16px; text-decoration: none; color: inherit;
+  background: var(--accent-soft); border: 1.5px solid var(--accent);
+}
+.resume-card:hover { background: var(--surface-2); }
+.resume-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 240px; }
+.resume-progress { display: flex; align-items: center; gap: 10px; }
+.resume-progress .progress { flex: 0 0 120px; }
+.resume-card .go { flex-shrink: 0; }
+.resume-note { margin: 0; }

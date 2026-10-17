@@ -91,6 +91,19 @@ export default defineSchema({
     .index("by_parentCode", ["parentCode"])
     .index("by_class", ["className"]),
 
+  // An unfinished test, saved as the student works so they can carry on later (any device).
+  drafts: defineTable({
+    studentId: v.id("students"),
+    quizId: v.id("quizzes"),
+    state: v.string(), // the page's sitting (question order, answers) as JSON
+    answered: v.number(),
+    total: v.number(),
+    elapsedSec: v.number(), // time already used, so a timed test resumes where it stopped
+    updatedAt: v.number(),
+  })
+    .index("by_student_quiz", ["studentId", "quizId"])
+    .index("by_updatedAt", ["updatedAt"]),
+
   // A student leaving a guarded test: "away" (with the answers at that moment), then back or locked.
   focusEvents: defineTable({
     studentId: v.id("students"),

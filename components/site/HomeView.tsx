@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/convex/_generated/api";
 import { firstName } from "@/convex/model";
+import { stamp } from "@/lib/ui";
 import { FolderCard, Loading, LoginForm, Swoosh, doneLabel, type DoneMap, type FolderInfo, type QuizMeta, type ResourceRow } from "./parts";
 import { useSite, type HomeData } from "./SiteShell";
 
@@ -120,6 +121,29 @@ function Dashboard({ home }: { home: HomeData }) {
           <span>Chuyên cần {progress.rate}%</span>
         </div>
       </section>
+
+      {dash.unfinished.length > 0 && (
+        <section className="resume-list" aria-label="Bài em đang làm dở">
+          <p className="eyebrow">Bài em đang làm dở</p>
+          {dash.unfinished.map((u) => (
+            <Link key={u.id} className="resume-card" href={`/bai/${u.id}`}>
+              <span className="resume-text">
+                <span className="tiny muted">{folderName(u.folder)}</span>
+                <b>{u.title}</b>
+                <span className="resume-progress">
+                  <span className="progress" aria-hidden="true">
+                    <i style={{ width: `${u.total ? (u.answered / u.total) * 100 : 0}%` }} />
+                  </span>
+                  <span className="tiny">
+                    Đã làm {u.answered}/{u.total} câu · lưu lúc {stamp(u.updatedAt)}
+                  </span>
+                </span>
+              </span>
+              <span className="btn btn-primary go">Em vào làm tiếp nhé →</span>
+            </Link>
+          ))}
+        </section>
+      )}
 
       {featured.length > 0 && (
         <div className="featured">

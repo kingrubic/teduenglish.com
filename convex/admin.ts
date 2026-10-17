@@ -449,6 +449,8 @@ export const deleteStudent = mutation({
       await ctx.db.delete(a._id);
     for (const u of await ctx.db.query("quizUnlocks").withIndex("by_student_quiz", (q) => q.eq("studentId", args.id)).collect())
       await ctx.db.delete(u._id);
+    for (const d of await ctx.db.query("drafts").withIndex("by_student_quiz", (q) => q.eq("studentId", args.id)).collect()) await ctx.db.delete(d._id);
+    for (const e of await ctx.db.query("focusEvents").withIndex("by_student_quiz", (q) => q.eq("studentId", args.id)).collect()) await ctx.db.delete(e._id);
     await ctx.db.delete(args.id);
   },
 });
@@ -735,6 +737,8 @@ export const deleteQuiz = mutation({
     for (const a of await ctx.db.query("attempts").withIndex("by_quiz", (q) => q.eq("quizId", args.id)).collect())
       await ctx.db.delete(a._id);
     for (const u of await ctx.db.query("quizUnlocks").collect()) if (u.quizId === args.id) await ctx.db.delete(u._id);
+    for (const d of await ctx.db.query("drafts").collect()) if (d.quizId === args.id) await ctx.db.delete(d._id);
+    for (const e of await ctx.db.query("focusEvents").collect()) if (e.quizId === args.id) await ctx.db.delete(e._id);
     const quiz = await ctx.db.get(args.id);
     if (!quiz) return;
     await ctx.db.delete(args.id);

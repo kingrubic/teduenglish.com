@@ -887,8 +887,12 @@ const FAQ: [string, React.ReactNode][] = [
     "Trang Thống kê: thẻ “Chuyên cần” (tỷ lệ bài đã làm / bài được giao, lọc theo lớp và thư mục) và thẻ “Xếp hạng IELTS” (lọc theo lớp, kỹ năng, từng bài; bật “Ẩn tên” khi chiếu cho cả lớp). Cả hai đều tải Excel được. Học sinh tự xem thứ hạng IELTS của mình trong lớp ở trang học tập (tên các bạn khác được ẩn); phụ huynh không thấy bảng này. Muốn bài Writing vào bảng xếp hạng: đặt bài trong thư mục IELTS hoặc chọn “IELTS Writing” ở ô Kỹ năng IELTS, và chấm band cho từng Task.",
   ],
   [
+    "Học sinh làm chưa xong bài thì sao?",
+    "Bài được tự động lưu lên máy chủ trong lúc em làm (câu đã chọn, bài viết, thời gian đã dùng). Lần sau đăng nhập, kể cả trên máy khác, trang học tập có mục “Bài em đang làm dở” với nút “Em vào làm tiếp nhé”; bài có đếm giờ chạy tiếp với số phút còn lại. Bài thường có thêm nút “💾 Lưu bài, lần sau làm tiếp”. Bài có chống chuyển tab vẫn tự lưu, nhưng rời trang bài (kể cả về trang học tập) vẫn bị tính là rời bài. Bài làm dở quá 60 ngày tự xoá.",
+  ],
+  [
     "Chống chuyển tab khi làm bài hoạt động thế nào?",
-    "Bài IELTS Reading, IELTS Writing và bài có phần viết tự bật “🔒 Chống chuyển tab” (thầy cô bật/tắt từng bài trong trình soạn). Khi đang làm, nếu em chuyển tab, mở ứng dụng hay trình duyệt khác: lần 1 chỉ nhắc nhở (tên tab nhấp nháy, kêu bíp); lần 2 đếm ngược 10 giây và lần 3 đếm ngược 5 giây để quay lại; quá giờ, hoặc rời bài lần 4, phần bài em đã làm được tự nộp (có nhãn “🚪 Tự nộp” ở trang Kết quả) và tài khoản bị khoá. Mở lại: trang Học sinh → “🔓 Mở khoá”. Lưu ý: hệ thống không biết em dùng thêm máy thứ hai, và cuộc gọi đến hay tắt màn hình điện thoại cũng bị tính là rời bài.",
+    "Bài IELTS Reading, IELTS Writing và bài có phần viết tự bật “🔒 Chống chuyển tab” (thầy cô bật/tắt từng bài trong trình soạn). Khi đang làm, nếu em chuyển tab, mở ứng dụng hay trình duyệt khác, hoặc rời trang bài: lần 1 chỉ nhắc nhở (tên tab nhấp nháy, kêu bíp); lần 2 đếm ngược 10 giây và lần 3 đếm ngược 5 giây để quay lại; quá giờ, hoặc rời bài lần 4, phần bài em đã làm được tự nộp (có nhãn “🚪 Tự nộp” ở trang Kết quả) và tài khoản bị khoá. Mở lại: trang Học sinh → “🔓 Mở khoá”. Lưu ý: hệ thống không biết em dùng thêm máy thứ hai, và cuộc gọi đến hay tắt màn hình điện thoại cũng bị tính là rời bài.",
   ],
   [
     "Vì sao có bài bị mờ đi, học sinh không bấm vào được?",

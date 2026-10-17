@@ -3,6 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Answers } from "@/convex/model";
@@ -28,7 +29,12 @@ type Attempt = {
   outcome?: Submitted;
   /** When this sitting started (drives the countdown; survives reloads via the draft). */
   startedAt: number;
+  /** When the draft was last saved; a sitting resumed much later gets its clock shifted by the gap. */
+  savedAt?: number;
 };
+
+/** A reload within this long keeps the clock running; a later return carries on with the time left. */
+const PAUSE_AFTER_MS = 10 * 60 * 1000;
 
 export default function QuizView({ id }: { id: string }) {
   const { token, adminToken, teacher } = useSite();
@@ -224,7 +230,16 @@ function QuizRunner({
   onLockedOut: () => void;
 }) {
   const { token, adminToken, teacher, home, toast, signOut } = useSite();
+  const router = useRouter();
   const submitMut = useMutation(api.site.submit);
+  const saveDraftMut = useMutation(api.drafts.save);
+  const discardDraftMut = useMutation(api.drafts.discard);
+  // The copy saved on the server, so an unfinished test can be continued on any device.
+  const serverDraft = useQuery(api.drafts.get, !preview && token ? { token, id: meta.id } : "skip");
+  const restored = useRef(false);
+  const [resumed, setResumed] = useState(false);
+  // Leaving a guarded test counts, unless it is because the student just submitted it.
+  const guardArmed = useRef(true);
   // Freeze the questions for this sitting, even if a teacher edits the quiz meanwhile.
   const [sections] = useState(liveSections);
   // Long essays must survive a closed tab, so drafts live in localStorage, per student.
@@ -237,19 +252,34 @@ function QuizRunner({
   const resultRef = useRef<HTMLElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Restore an unfinished attempt after a reload (same tab).
+  // Restore an unfinished sitting: the newer of this browser's copy and the server's.
   useEffect(() => {
-    const d = sget<Attempt | null>("localStorage", draftKey, null);
-    if (!draftFits(d, sections)) return;
-    // A sitting abandoned long ago gets a fresh clock instead of being submitted on open.
-    const stale = !d.startedAt || (limitSec > 0 && Date.now() - d.startedAt > (limitSec + 600) * 1000);
+    if (restored.current) return;
+    if (!preview && token && serverDraft === undefined) return; // wait for the server copy
+    restored.current = true;
+    const local = sget<Attempt | null>("localStorage", draftKey, null);
+    let remote: Attempt | null = null;
+    if (serverDraft)
+      try {
+        const p = JSON.parse(serverDraft.state) as Pick<Attempt, "sections" | "answers">;
+        remote = { ...p, submitted: false, savedAt: serverDraft.updatedAt, startedAt: serverDraft.updatedAt - serverDraft.elapsedSec * 1000 };
+      } catch {
+        /* unreadable copy: start fresh */
+      }
+    const pick = [local, remote].filter((d): d is Attempt => draftFits(d, sections)).sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0))[0];
+    if (!pick) return;
+    // Back after a while: carry on with the time that was left, not the time that passed.
+    const gap = pick.savedAt ? Date.now() - pick.savedAt : 0;
+    const startedAt = !pick.savedAt ? Date.now() : gap > PAUSE_AFTER_MS ? pick.startedAt + gap : pick.startedAt;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setAtt(stale ? { ...d, startedAt: Date.now() } : d);
-  }, [draftKey, sections, limitSec]);
+    setAtt({ ...pick, startedAt });
+    if (answeredCount(sections, pick.answers) > 0) setResumed(true);
+  }, [draftKey, sections, serverDraft, preview, token]);
 
   useEffect(() => {
-    // Saved even before the first answer so a reload can't restart the clock.
-    if (!att.submitted) sset("localStorage", draftKey, att);
+    // Saved even before the first answer so a reload can't restart the clock
+    // (but not before the saved copy is read, or it would be overwritten).
+    if (restored.current && !att.submitted) sset("localStorage", draftKey, { ...att, savedAt: Date.now() });
   }, [att, draftKey]);
 
   /* ---------- countdown ---------- */
@@ -264,6 +294,52 @@ function QuizRunner({
 
   const total = meta.questionCount;
   const answered = answeredCount(sections, att.answers);
+
+  /* ---------- saving the unfinished test on the server ---------- */
+  const pushDraft = useCallback(async () => {
+    if (preview || !token || att.submitted || !restored.current || answeredCount(sections, att.answers) === 0) return false;
+    return saveDraftMut({
+      token,
+      id: meta.id,
+      state: JSON.stringify({ sections: att.sections, answers: att.answers }),
+      answered: answeredCount(sections, att.answers),
+      total,
+      elapsedSec: (Date.now() - att.startedAt) / 1000,
+    });
+  }, [preview, token, att, sections, saveDraftMut, meta.id, total]);
+  const pushRef = useRef(pushDraft);
+  useEffect(() => {
+    pushRef.current = pushDraft;
+  });
+  // A few seconds after each change, and right away when the page is hidden (phone locked, app switched).
+  useEffect(() => {
+    const t = setTimeout(() => pushRef.current().catch(() => {}), 2500);
+    return () => clearTimeout(t);
+  }, [att.answers]);
+  useEffect(() => {
+    const flush = () => document.visibilityState === "hidden" && pushRef.current().catch(() => {});
+    document.addEventListener("visibilitychange", flush);
+    return () => document.removeEventListener("visibilitychange", flush);
+  }, []);
+
+  async function saveAndLeave() {
+    try {
+      await pushDraft();
+      toast("Đã lưu bài. Lần sau em vào trang học tập, bấm “Em vào làm tiếp nhé” để làm tiếp.");
+      router.push("/");
+    } catch (e) {
+      toast(errMsg(e, "Chưa lưu được bài. Em kiểm tra mạng rồi thử lại."));
+    }
+  }
+
+  async function startOver() {
+    if (!withGuardPaused(() => window.confirm("Xoá phần đã làm và làm lại bài này từ đầu?"))) return;
+    if (token) await discardDraftMut({ token, id: meta.id }).catch(() => {});
+    sdel("localStorage", draftKey);
+    autoSubmitted.current = false;
+    setAtt(newAttempt(sections, false));
+    setResumed(false);
+  }
 
   function setAnswer(key: string, value: string | number) {
     setAtt((a) => (a.submitted ? a : { ...a, answers: { ...a.answers, [key]: value } }));
@@ -347,11 +423,13 @@ function QuizRunner({
     ttsStop();
     setTts((t) => ({ ...t, playing: false, paused: false }));
     setBusy(true);
+    guardArmed.current = false;
     try {
       const outcome = await submitMut({ token: token ?? undefined, adminToken: preview ? adminToken ?? undefined : undefined, id: meta.id, answers: att.answers, durationSec: (Date.now() - att.startedAt) / 1000 });
       setAtt((a) => ({ ...a, submitted: true, outcome }));
       sdel("localStorage", draftKey);
     } catch (e) {
+      guardArmed.current = true;
       toast(errMsg(e, "Chưa nộp được bài. Em thử lại nhé."));
     } finally {
       setBusy(false);
@@ -381,6 +459,7 @@ function QuizRunner({
     ttsStop();
     setTts({ sec: null, playing: false, paused: false, msg: "" });
     setShowCopy(null);
+    guardArmed.current = true;
     // Keep the essays so the student can revise and resubmit them.
     setAtt((prev) => {
       autoSubmitted.current = false;
@@ -430,7 +509,17 @@ function QuizRunner({
             onLockedOut();
           }}
           onSignOut={signOut}
+          armed={guardArmed}
         />
+      )}
+      {resumed && !att.submitted && (
+        <p className="alert alert-good resume-note">
+          📌 Em đang làm tiếp bài đã lưu (đã làm {answered}/{total} câu
+          {limitSec ? `, đồng hồ chạy tiếp từ chỗ em dừng` : ""}).{" "}
+          <button className="link-btn" type="button" onClick={startOver}>
+            Làm lại từ đầu
+          </button>
+        </p>
       )}
       {att.submitted && att.outcome && (
         <ResultBlock
@@ -641,8 +730,15 @@ function QuizRunner({
           <button className="btn btn-primary btn-block" type="button" onClick={() => submit()} disabled={busy}>
             {busy ? "Đang chấm bài…" : answered >= total ? "Nộp bài và xem kết quả" : `Nộp bài (${total - answered} câu chưa làm)`}
           </button>
+          {!preview && token && !meta.guard && (
+            <button className="btn btn-ghost btn-block" type="button" onClick={saveAndLeave} disabled={busy || answered === 0}>
+              💾 Lưu bài, lần sau làm tiếp
+            </button>
+          )}
           <p className="tiny muted" style={{ textAlign: "center" }}>
-            Em có thể nộp bất cứ lúc nào; câu bỏ trống được tính là chưa làm.
+            {meta.guard && !preview
+              ? "Bài được tự động lưu; nếu mất mạng hay tắt máy, em vào lại sẽ làm tiếp được. Câu bỏ trống được tính là chưa làm."
+              : "Em có thể nộp bất cứ lúc nào; câu bỏ trống được tính là chưa làm. Bài được tự động lưu để lần sau làm tiếp."}
           </p>
         </div>
       )}

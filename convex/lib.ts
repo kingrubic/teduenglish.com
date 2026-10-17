@@ -190,7 +190,12 @@ export async function cleanAnswers(ctx: Ctx, quiz: Doc<"quizzes">, raw: Record<s
   return { answers, needsReview };
 }
 
-/** Grades and stores one attempt. */
+export async function deleteDrafts(ctx: MutationCtx, studentId: Id<"students">, quizId: Id<"quizzes">) {
+  for (const d of await ctx.db.query("drafts").withIndex("by_student_quiz", (q) => q.eq("studentId", studentId).eq("quizId", quizId)).collect())
+    await ctx.db.delete(d._id);
+}
+
+/** Grades and stores one attempt (and drops the unfinished draft it replaces). */
 export async function saveAttempt(
   ctx: MutationCtx,
   quiz: Doc<"quizzes">,
@@ -213,6 +218,7 @@ export async function saveAttempt(
     ...(needsReview ? { reviewStatus: "pending" as const } : {}),
     ...(opts.leftQuiz ? { leftQuiz: true } : {}),
   });
+  await deleteDrafts(ctx, studentId, quiz._id);
   await ctx.db.patch(studentId, { lastSeenAt: now });
   return { answers, needsReview, result, band, now };
 }

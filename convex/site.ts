@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import { mutation, query, type QueryCtx } from "./_generated/server";
 import {
   STUDENT_SESSION_MS,
   allFolders,
@@ -34,6 +35,19 @@ function publicStudent(s: { name: string; className: string; folders: string[] }
 }
 
 /* ---------- reads ---------- */
+
+/** Tests the student started and saved but hasn't submitted (newest first). */
+async function unfinishedFor(ctx: QueryCtx, studentId: Id<"students">, openFolders: string[], lockAtPercent: number) {
+  const drafts = await ctx.db.query("drafts").withIndex("by_student_quiz", (q) => q.eq("studentId", studentId)).collect();
+  const out = [];
+  for (const d of drafts.sort((a, b) => b.updatedAt - a.updatedAt)) {
+    const quiz = await ctx.db.get(d.quizId);
+    if (!quiz || !quiz.published || !openFolders.includes(quiz.folder)) continue;
+    if (isMastered(await studentQuizAttempts(ctx, studentId, quiz._id), lockAtPercent)) continue;
+    out.push({ id: quiz.slug, title: quiz.title, folder: quiz.folder, answered: d.answered, total: d.total, updatedAt: d.updatedAt });
+  }
+  return out;
+}
 
 /** Everything the header, footer and home page need. */
 export const home = query({
@@ -72,6 +86,7 @@ export const home = query({
         resources: await Promise.all(resources.map((r) => studentResource(ctx, r))),
         done: await doneMapFor(ctx, student._id, settings.lockAtPercent),
         progress: await progressFor(ctx, student),
+        unfinished: await unfinishedFor(ctx, student._id, open, settings.lockAtPercent),
       },
     };
   },

@@ -29,6 +29,9 @@ export function withGuardPaused<T>(fn: () => T): T {
 const SECOND = 10;
 const THIRD = 5;
 
+/** Guards currently on screen. */
+let live = 0;
+
 const isAway = () => document.visibilityState === "hidden" || !document.hasFocus();
 
 type Phase =
@@ -44,6 +47,7 @@ export default function FocusGuard({
   snapshot,
   onLocked,
   onSignOut,
+  armed,
 }: {
   id: string;
   token: string;
@@ -53,12 +57,19 @@ export default function FocusGuard({
   snapshot: () => { answers: Record<string, string | number>; durationSec: number };
   onLocked: () => void;
   onSignOut: () => void;
+  /** While true, leaving the test page inside the site (e.g. back to the home page) counts as leaving too. */
+  armed: React.RefObject<boolean>;
 }) {
   const awayMut = useMutation(api.guard.away);
   const backMut = useMutation(api.guard.back);
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const [now, setNow] = useState(() => Date.now());
   const [warned, setWarned] = useState(used);
+  // The server's count can arrive after the page is shown (e.g. coming back right after leaving).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWarned((w) => Math.max(w, used));
+  }, [used]);
   const busy = useRef(false);
   const audio = useRef<AudioContext | null>(null);
   const snap = useRef(snapshot);
@@ -160,6 +171,22 @@ export default function FocusGuard({
     };
   }, [awayMut, backMut, id, token]);
 
+  // Going to another page of the site in the middle of the test counts as leaving it.
+  // (Checked a moment later: React may unmount and remount at once, which isn't leaving.)
+  useEffect(() => {
+    live++;
+    return () => {
+      live--;
+      // The value at unmount is the one that matters (false right after submitting).
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      if (!armed.current) return;
+      const { answers, durationSec } = snap.current();
+      setTimeout(() => {
+        if (live === 0) awayMut({ token, id, answers, durationSec }).catch(() => {});
+      }, 50);
+    };
+  }, [armed, awayMut, id, token]);
+
   // Flash the tab title while away so the student notices from another tab.
   useEffect(() => {
     if (phase.kind !== "away") return;
@@ -177,7 +204,7 @@ export default function FocusGuard({
 
   const banner = (
     <p className={`guard-banner${warned >= 2 ? " used" : ""}`} role="note">
-      🔒 <b>Bài có giám sát:</b> không chuyển tab, không mở ứng dụng hay trình duyệt khác cho đến khi nộp bài.{" "}
+      🔒 <b>Bài có giám sát:</b> không chuyển tab, không mở ứng dụng hay trình duyệt khác, không rời trang bài cho đến khi nộp bài.{" "}
       {warned >= 3 ? (
         <b>Em đã rời bài 3 lần: rời bài lần nữa là tài khoản bị khoá ngay.</b>
       ) : warned === 2 ? (
